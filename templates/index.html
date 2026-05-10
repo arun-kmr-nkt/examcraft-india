@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExamCraft India — AI-Powered Exam Platform</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-icon">&#9997;</span>
+      <div>
+        <span class="logo-title">ExamCraft India</span>
+        <span class="logo-sub">AI-Powered Exam Platform</span>
+      </div>
+    </div>
+    <div class="header-badge">NCERT Aligned • Classes 1–12</div>
+  </div>
+</header>
+
+<!-- ===== STEP INDICATOR ===== -->
+<div class="step-wrapper">
+  <div class="step-bar">
+    <div class="step active" id="step-dot-1" onclick="gotoStep(1)">
+      <div class="step-circle">1</div>
+      <div class="step-label">Exam Setup</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step-dot-2" onclick="gotoStep(2)">
+      <div class="step-circle">2</div>
+      <div class="step-label">Chapters</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step-dot-3" onclick="gotoStep(3)">
+      <div class="step-circle">3</div>
+      <div class="step-label">Question Types</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step-dot-4" onclick="gotoStep(4)">
+      <div class="step-circle">4</div>
+      <div class="step-label">Question Paper</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step-dot-5" onclick="gotoStep(5)">
+      <div class="step-circle">5</div>
+      <div class="step-label">Evaluate</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="main-content">
+
+  <!-- STEP 1: EXAM SETUP -->
+  <section class="step-section active" id="section-1">
+    <div class="card">
+      <div class="card-header">
+        <h2>&#9881; Exam Configuration</h2>
+        <p>Set up the basic details of your question paper</p>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="board">Board / Curriculum</label>
+            <select id="board" required>
+              <option value="">Select Board...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="class_num">Class</label>
+            <select id="class_num" required>
+              <option value="">Select Class...</option>
+              <option value="1">Class I</option>
+              <option value="2">Class II</option>
+              <option value="3">Class III</option>
+              <option value="4">Class IV</option>
+              <option value="5">Class V</option>
+              <option value="6">Class VI</option>
+              <option value="7">Class VII</option>
+              <option value="8">Class VIII</option>
+              <option value="9">Class IX</option>
+              <option value="10">Class X</option>
+              <option value="11">Class XI</option>
+              <option value="12">Class XII</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="subject">Subject</label>
+            <select id="subject" required disabled>
+              <option value="">Select Class first...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="exam_type">Exam Type</label>
+            <select id="exam_type" required>
+              <option value="Monthly Test">Monthly Test</option>
+              <option value="Unit Test">Unit Test</option>
+              <option value="Half-Yearly">Half-Yearly Examination</option>
+              <option value="Pre-Board">Pre-Board Examination</option>
+              <option value="Annual">Annual Examination</option>
+              <option value="Practice">Practice Paper</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="total_marks">Total Marks</label>
+            <input type="number" id="total_marks" value="80" min="10" max="200" required />
+          </div>
+          <div class="form-group">
+            <label for="duration">Duration</label>
+            <select id="duration">
+              <option value="1 Hour">1 Hour</option>
+              <option value="1.5 Hours">1.5 Hours</option>
+              <option value="2 Hours">2 Hours</option>
+              <option value="2.5 Hours">2.5 Hours</option>
+              <option value="3 Hours" selected>3 Hours</option>
+              <option value="3.5 Hours">3.5 Hours</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="difficulty">Difficulty Level</label>
+            <select id="difficulty">
+              <option value="mixed" selected>Mixed (30% Easy, 50% Medium, 20% Hard)</option>
+              <option value="easy">Easy (Recall-based)</option>
+              <option value="medium">Medium (Understanding-based)</option>
+              <option value="hard">Hard (Application & Analysis)</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="goToStep2()">
+            Next: Select Chapters &#8594;
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2: CHAPTER SELECTION -->
+  <section class="step-section" id="section-2">
+    <div class="card">
+      <div class="card-header">
+        <h2>&#128218; Chapter Selection</h2>
+        <p>Choose NCERT chapters to include in the question paper</p>
+      </div>
+      <div class="card-body">
+        <div class="chapter-actions">
+          <button class="btn btn-outline btn-sm" onclick="selectAllChapters()">Select All</button>
+          <button class="btn btn-outline btn-sm" onclick="deselectAllChapters()">Deselect All</button>
+          <span class="chapter-count" id="chapter-count">0 chapters selected</span>
+        </div>
+        <div id="chapters-container" class="chapters-grid">
+          <div class="loading-chapters">Loading chapters...</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="upload-section">
+          <h3>&#128247; Upload Chapter Images (Optional)</h3>
+          <p class="hint">Upload images of chapter pages or diagrams for more contextual questions</p>
+          <div class="upload-zone" id="chapter-upload-zone" onclick="document.getElementById('chapter_images').click()">
+            <div class="upload-icon">&#128190;</div>
+            <div class="upload-text">Click to upload chapter images</div>
+            <div class="upload-hint">PNG, JPG, GIF, WebP supported</div>
+          </div>
+          <input type="file" id="chapter_images" multiple accept="image/*" style="display:none" onchange="handleChapterImageUpload(event)" />
+          <div id="chapter-image-previews" class="image-previews"></div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="gotoStep(1)">&#8592; Back</button>
+          <button class="btn btn-primary" onclick="goToStep3()">
+            Next: Configure Questions &#8594;
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3: QUESTION TYPES -->
+  <section class="step-section" id="section-3">
+    <div class="card">
+      <div class="card-header">
+        <h2>&#10067; Question Type Configuration</h2>
+        <p>Set the number and marks for each type of question</p>
+      </div>
+      <div class="card-body">
+
+        <div class="marks-summary-bar">
+          <div class="marks-summary-inner">
+            <span>Marks Configured:</span>
+            <span class="marks-counter" id="marks-counter">0</span>
+            <span>/ Target:</span>
+            <span class="marks-target" id="marks-target">80</span>
+            <span id="marks-status" class="marks-ok">&#10004;</span>
+          </div>
+        </div>
+
+        <div class="qt-grid">
+          <!-- MCQ -->
+          <div class="qt-card" id="qt-mcq">
+            <div class="qt-header">
+              <div class="qt-toggle">
+                <input type="checkbox" id="enable-mcq" onchange="toggleQType('mcq')" checked />
+                <label for="enable-mcq">
+                  <span class="qt-icon">&#9711;</span>
+                  <strong>Multiple Choice (MCQ)</strong>
+                </label>
+              </div>
+              <span class="qt-badge">4 options</span>
+            </div>
+            <div class="qt-inputs" id="inputs-mcq">
+              <div class="qt-row">
+                <div class="qt-field">
+                  <label>Number of Questions</label>
+                  <input type="number" id="mcq-count" value="10" min="1" max="50" onchange="updateMarksTotal()" />
+                </div>
+                <div class="qt-field">
+                  <label>Marks per Question</label>
+                  <input type="number" id="mcq-marks" value="1" min="1" max="10" onchange="updateMarksTotal()" />
+                </div>
+                <div class="qt-total">
+                  = <span id="mcq-total">10</span> marks
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fill in the Blanks -->
+          <div class="qt-card" id="qt-fill_blank">
+            <div class="qt-header">
+              <div class="qt-toggle">
+                <input type="checkbox" id="enable-fill_blank" onchange="toggleQType('fill_blank')" checked />
+                <label for="enable-fill_blank">
+                  <span class="qt-icon">&#9135;</span>
+                  <strong>Fill in the Blanks</strong>
+                </label>
+              </div>
+            </div>
+            <div class="qt-inputs" id="inputs-fill_blank">
+              <div class="qt-row">
+                <div class="qt-field">
+                  <label>Number of Questions</label>
+                  <input type="number" id="fill_blank-count" value="5" min="1" max="30" onchange="updateMarksTotal()" />
+                </div>
+                <div class="qt-field">
+                  <label>Marks per Question</label>
+                  <input type="number" id="fill_blank-marks" value="1" min="1" max="5" onchange="updateMarksTotal()" />
+                </div>
+                <div class="qt-total">
+                  = <span id="fill_blank-total">5</span> marks
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Match the Following -->
+          <div class="qt-card" id="qt-match">
+            <div class="qt-header">
+              <div class="qt-toggle">
+                <input type="checkbox" id="enable-match" onchange="toggleQType('match')" />
+                <label for="enable-match">
+                  <span class="qt-icon">&#8596;</span>
+                  <strong>Match the Following</strong>
+                </label>
+              </div>
+            </div>
+            <div class="qt-inputs disabled" id="inputs-match">
+              <div class="qt-row">
+                <div class="qt-field">
+                  <label>Number of Sets</label>
+                  <input type="number" id="match-count" value="1" min="1" max="5" onchange="updateMarksTotal()" disabled />
+                </div>
+                <div class="qt-field">
+                  <label>Marks per Set</label>
+                  <input type="number" id="match-marks" value="5" min="1" max="20" onchange="updateMarksTotal()" disabled />
+                </div>
+                <div class="qt-total">
+                  = <span id="match-total">0</span> marks
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- True / False -->
+          <div class="qt-card" id="qt-true_false">
+            <div class="qt-header">
+              <div class="qt-toggle">
+                <input type="checkbox" id="enable-true_false" onchange="toggleQType('true_false')" />
+                <label for="enable-true_false">
+                  <span class="qt-icon">&#10003;</span>
+                  <strong>True / False</strong>
+                </label>
+              </div>
+            </div>
+            <div class="qt-inputs disabled" id="inputs-true_false">
+              <div class="qt-row">
+                <div class="qt-field">
+                  <label>Number of Questions</label>
+                  <input type="number" id="true_false-count" value="5" min="1" max="20" onchange="updateMarksTotal()" disabled />
+                </div>
+                <div class="qt-field">
+                  <label>Marks per Question</label>
+                  <input type="number" id="true_false-marks" value="1" min="1" max="3" onchange="updateMarksTotal()" disabled />
+                </div>
+                <div class="qt-total">
+                  = <span id="true_false-total">0</span> marks
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Short Answer -->
+          <div class="qt-card" id="qt-short_answer">
+            <div class="qt-header">
+              <div class="qt-toggle">
+                <input type="checkbox" id="enable-short_answer" onchange="toggleQType('short_answer')" checked />
+                <label for="enable-short_answer">
+                  <span class="qt-icon">&#128221;</span>
+                  <strong>Short Answer Type</strong>
+                </label>
+              </div>
+            </div>
+            <div class="qt-inputs" id="inputs-short_answer">
+              <div class="qt-row">
+                <div class="qt-field">
+                  <label>Number of Questions</label>
+                  <input type="number" id="short_answer-count" value="5" min="1" max="20" onchange="updateMarksTotal()" />
+                </div>
+                <div class="qt-field">
+                  <label>Marks per Question</label>
+                  <input type="number" id="short_answer-marks" value="3" min="1" max="10" onchange="updateMarksTotal()" />
+                </div>
+                <div class="qt-total">
+                  = <span id="short_answer-total">15</span> marks
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Diagram Based -->
+          <div class="qt-card" id="qt-diagram">
+            <div class="qt-header">
+              <div class="qt-toggle">
+                <input type="checkbox" id="enable-diagram" onchange="toggleQType('diagram')" />
+                <label for="enable-diagram">
+                  <span class="qt-icon">&#128444;</span>
+                  <strong>Diagram / Long Answer</strong>
+                </label>
+              </div>
+            </div>
+            <div class="qt-inputs disabled" id="inputs-diagram">
+              <div class="qt-row">
+                <div class="qt-field">
+                  <label>Number of Questions</label>
+                  <input type="number" id="diagram-count" value="2" min="1" max="10" onchange="updateMarksTotal()" disabled />
+                </div>
+                <div class="qt-field">
+                  <label>Marks per Question</label>
+                  <input type="number" id="diagram-marks" value="5" min="2" max="20" onchange="updateMarksTotal()" disabled />
+                </div>
+                <div class="qt-total">
+                  = <span id="diagram-total">0</span> marks
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="gotoStep(2)">&#8592; Back</button>
+          <button class="btn btn-primary btn-lg" onclick="generatePaper()" id="generate-btn">
+            &#9889; Generate Question Paper
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 4: GENERATED PAPER -->
+  <section class="step-section" id="section-4">
+    <div class="paper-toolbar">
+      <button class="btn btn-outline btn-sm" onclick="gotoStep(3)">&#8592; Regenerate</button>
+      <button class="btn btn-success btn-sm" onclick="window.print()">&#128424; Print / Download PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="gotoStep(5)">Evaluate Answer Sheets &#8594;</button>
+    </div>
+
+    <div class="question-paper" id="question-paper-display">
+      <!-- Generated dynamically -->
+    </div>
+
+    <div class="btn-row" style="margin-top:2rem;">
+      <button class="btn btn-primary btn-lg" onclick="gotoStep(5)">
+        &#128196; Proceed to Answer Sheet Evaluation &#8594;
+      </button>
+    </div>
+  </section>
+
+  <!-- STEP 5: EVALUATION -->
+  <section class="step-section" id="section-5">
+    <div class="card" id="eval-form-card">
+      <div class="card-header">
+        <h2>&#128203; Answer Sheet Evaluation</h2>
+        <p>Upload a student's answer sheet to get AI-powered evaluation with detailed marks report</p>
+      </div>
+      <div class="card-body">
+        <div class="form-grid form-grid-2">
+          <div class="form-group">
+            <label for="student_name">Student Name</label>
+            <input type="text" id="student_name" placeholder="Enter student's full name" />
+          </div>
+          <div class="form-group">
+            <label for="roll_no">Roll Number</label>
+            <input type="text" id="roll_no" placeholder="e.g. 2024-101" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Upload Answer Sheet</label>
+          <div class="upload-zone large" id="answer-upload-zone" onclick="document.getElementById('answer_sheet').click()">
+            <div class="upload-icon">&#128196;</div>
+            <div class="upload-text">Click to upload answer sheet</div>
+            <div class="upload-hint">Supported: PNG, JPG, PDF, DOC, DOCX, TXT (max 50 MB)</div>
+            <div class="upload-filename" id="upload-filename"></div>
+          </div>
+          <input type="file" id="answer_sheet" style="display:none"
+                 accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.txt"
+                 onchange="handleAnswerSheetUpload(event)" />
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline" onclick="gotoStep(4)">&#8592; Back to Paper</button>
+          <button class="btn btn-primary btn-lg" onclick="evaluateAnswerSheet()" id="evaluate-btn">
+            &#9889; Evaluate Answer Sheet
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVALUATION REPORT -->
+    <div id="evaluation-report" style="display:none;">
+      <div class="report-header-card">
+        <div class="report-header-inner">
+          <div class="report-logo">ExamCraft India — Evaluation Report</div>
+          <div class="report-meta" id="report-meta"></div>
+        </div>
+        <div class="report-score-box">
+          <div class="score-obtained" id="score-obtained">--</div>
+          <div class="score-total" id="score-total">out of --</div>
+          <div class="score-percentage" id="score-percentage">--%</div>
+          <div class="score-grade" id="score-grade">--</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem;">
+        <div class="card-header">
+          <h2>&#128202; Section-wise Marks</h2>
+        </div>
+        <div class="card-body" style="padding-top:0;">
+          <div id="section-wise-table"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem;">
+        <div class="card-header">
+          <h2>&#128203; Question-wise Evaluation</h2>
+        </div>
+        <div class="card-body" style="padding-top:0; overflow-x:auto;">
+          <div id="question-wise-table"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem;">
+        <div class="card-header">
+          <h2>&#128172; Examiner's Remarks</h2>
+        </div>
+        <div class="card-body">
+          <p id="examiner-remarks" class="remarks-text"></p>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:1.5rem;">
+        <button class="btn btn-outline" onclick="resetEvaluation()">&#8635; Evaluate Another Sheet</button>
+        <button class="btn btn-success" onclick="window.print()">&#128424; Print Report</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== LOADING OVERLAY ===== -->
+<div class="loading-overlay" id="loading-overlay" style="display:none;">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div class="loading-title" id="loading-title">Generating Question Paper...</div>
+    <div class="loading-sub" id="loading-sub">Claude AI is crafting curriculum-aligned questions</div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="site-footer">
+  <div>ExamCraft India &copy; 2025 &mdash; NCERT Aligned Question Paper Generator &amp; Evaluator</div>
+  <div>Powered by Claude AI &bull; All Boards &bull; Classes 1–12</div>
+</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
