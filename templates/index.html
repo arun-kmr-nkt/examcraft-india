@@ -245,7 +245,8 @@
   <section class="step-section" id="section-4">
     <div class="paper-toolbar">
       <button class="btn btn-outline btn-sm" onclick="gotoStep(3)">&#8592; Regenerate</button>
-      <button class="btn btn-success btn-sm" onclick="window.print()">&#128424; Print / Download PDF</button>
+      <button class="btn btn-success btn-sm" onclick="printPaper()">&#128424; Print / Save as PDF</button>
+      <button class="btn btn-outline btn-sm" onclick="downloadWord()">&#128196; Download Word</button>
       <button class="btn btn-primary btn-sm" onclick="gotoStep(5)">Evaluate Answer Sheets &#8594;</button>
     </div>
 
@@ -345,7 +346,7 @@
 
       <div class="btn-row" style="margin-top:1.5rem;">
         <button class="btn btn-outline" onclick="resetEvaluation()">&#8635; Evaluate Another Sheet</button>
-        <button class="btn btn-success" onclick="window.print()">&#128424; Print Report</button>
+        <button class="btn btn-success" onclick="printReport()">&#128424; Print Report</button>
       </div>
     </div>
   </section>

@@ -1133,14 +1133,18 @@ body {
 
 /* ===== PRINT STYLES ===== */
 @media print {
+  /* Always hide chrome */
   .site-header, .step-wrapper, .paper-toolbar,
-  .btn-row, .site-footer, .loading-overlay, .toast {
+  .btn-row, .site-footer, .loading-overlay, .toast,
+  .history-panel, .history-overlay, #eval-form-card {
     display: none !important;
   }
 
+  body { background: white; }
   .main-content { max-width: 100%; padding: 0; margin: 0; }
-  .step-section { display: block !important; }
-  #section-1, #section-2, #section-3, #section-5 { display: none !important; }
+
+  /* Default: print question paper (section-4) */
+  .step-section { display: none !important; }
   #section-4 { display: block !important; }
 
   .question-paper {
@@ -1150,14 +1154,12 @@ body {
     border-radius: 0;
   }
 
-  body { background: white; }
-
   .qp-answer-key { page-break-before: always; }
-}
 
-@media print {
-  #section-4 { display: none !important; }
-  #evaluation-report { display: block !important; }
+  /* body.print-report: print evaluation report instead */
+  body.print-report #section-4 { display: none !important; }
+  body.print-report #section-5 { display: block !important; }
+  body.print-report #evaluation-report { display: block !important; }
 }
 
 /* ===== RESPONSIVE ===== */

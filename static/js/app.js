@@ -919,6 +919,59 @@ function restorePaper(paperJsonStr, paperId) {
   }
 }
 
+/* ===== PRINT & DOWNLOAD ===== */
+function printPaper() {
+  document.body.classList.remove('print-report');
+  window.print();
+}
+
+function printReport() {
+  document.body.classList.add('print-report');
+  window.print();
+  // Clean up class after print dialog closes
+  window.addEventListener('afterprint', () => {
+    document.body.classList.remove('print-report');
+  }, { once: true });
+}
+
+async function downloadWord() {
+  if (!state.questionPaper) {
+    showToast('No question paper to download.', 'error');
+    return;
+  }
+
+  showLoading('Generating Word Document...', 'Building your question paper in .docx format');
+
+  try {
+    const formData = new FormData();
+    formData.append('paper_json', JSON.stringify(state.questionPaper));
+
+    const res = await fetch('/api/download-word', { method: 'POST', body: formData });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Failed to generate Word file.', 'error');
+      return;
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `QuestionPaper_${state.subject.replace(/\s+/g, '_')}_Class${state.classNum}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast('Word document downloaded!', 'success');
+  } catch (e) {
+    showToast('Network error generating Word file.', 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
 /* ===== LOADING ===== */
 function showLoading(title = 'Processing...', sub = '') {
   document.getElementById('loading-title').textContent = title;

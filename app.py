@@ -6,7 +6,7 @@ import tempfile
 import re
 from datetime import datetime, timezone
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 from google import genai
 from google.genai import types as genai_types
 from PIL import Image
@@ -1435,6 +1435,260 @@ Be accurate and fair. Do not inflate or deflate marks."""
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WORD DOWNLOAD
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/download-word', methods=['POST'])
+def download_word():
+    try:
+        from docx import Document
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+
+        paper_json_str = request.form.get('paper_json', '')
+        if not paper_json_str:
+            return jsonify({'error': 'No paper data provided'}), 400
+        paper = json.loads(paper_json_str)
+
+        info = paper.get('paper_info', {})
+        doc = Document()
+
+        # ── Page margins ──────────────────────────────────────────────────────
+        for section in doc.sections:
+            section.top_margin    = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin   = Inches(1.2)
+            section.right_margin  = Inches(1.2)
+
+        # ── Helper: add styled paragraph ──────────────────────────────────────
+        def add_para(text, bold=False, size=11, align=WD_ALIGN_PARAGRAPH.LEFT,
+                     space_before=0, space_after=6, italic=False, color=None):
+            p = doc.add_paragraph()
+            p.alignment = align
+            p.paragraph_format.space_before = Pt(space_before)
+            p.paragraph_format.space_after  = Pt(space_after)
+            run = p.add_run(text)
+            run.bold   = bold
+            run.italic = italic
+            run.font.size = Pt(size)
+            if color:
+                run.font.color.rgb = RGBColor(*color)
+            return p
+
+        def add_horizontal_rule(doc):
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after  = Pt(2)
+            pPr = p._p.get_or_add_pPr()
+            pBdr = OxmlElement('w:pBdr')
+            bottom = OxmlElement('w:bottom')
+            bottom.set(qn('w:val'), 'single')
+            bottom.set(qn('w:sz'), '6')
+            bottom.set(qn('w:space'), '1')
+            bottom.set(qn('w:color'), '667eea')
+            pBdr.append(bottom)
+            pPr.append(pBdr)
+
+        # ── Header ────────────────────────────────────────────────────────────
+        board_text = info.get('board', '')
+        add_para(f"{board_text} — NCERT Curriculum",
+                 align=WD_ALIGN_PARAGRAPH.CENTER, size=10,
+                 color=(102, 126, 234), space_after=2)
+
+        subject = info.get('subject', '')
+        add_para(subject.upper(),
+                 bold=True, size=18, align=WD_ALIGN_PARAGRAPH.CENTER,
+                 space_before=0, space_after=2)
+
+        exam_type = info.get('exam_type', '')
+        add_para(exam_type,
+                 bold=True, size=13, align=WD_ALIGN_PARAGRAPH.CENTER,
+                 space_after=6, color=(118, 75, 162))
+
+        teacher_name = info.get('teacher_name', '')
+        if teacher_name:
+            add_para(f"Teacher: {teacher_name}",
+                     align=WD_ALIGN_PARAGRAPH.CENTER, size=10, space_after=4)
+
+        # Meta row (Class | Marks | Duration | Date)
+        meta_parts = []
+        if info.get('class'):     meta_parts.append(f"Class: {info['class']}")
+        if info.get('total_marks'): meta_parts.append(f"Max. Marks: {info['total_marks']}")
+        if info.get('duration'):  meta_parts.append(f"Duration: {info['duration']}")
+        meta_parts.append("Date: ___________")
+        add_para("   |   ".join(meta_parts),
+                 align=WD_ALIGN_PARAGRAPH.CENTER, size=10, space_after=8)
+
+        add_horizontal_rule(doc)
+
+        # ── Instructions ──────────────────────────────────────────────────────
+        instructions = paper.get('instructions', [])
+        if instructions:
+            add_para("General Instructions", bold=True, size=11,
+                     space_before=8, space_after=4, color=(102, 126, 234))
+            for i, inst in enumerate(instructions, 1):
+                p = doc.add_paragraph(style='List Number')
+                p.paragraph_format.space_after = Pt(2)
+                run = p.add_run(inst)
+                run.font.size = Pt(10)
+            doc.add_paragraph()
+
+        # ── Sections ──────────────────────────────────────────────────────────
+        q_num = 1
+        for sec in paper.get('sections', []):
+            sec_name = sec.get('section_name', '')
+            sec_inst = sec.get('instructions', '')
+
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(10)
+            p.paragraph_format.space_after  = Pt(2)
+            run = p.add_run(sec_name)
+            run.bold = True
+            run.font.size = Pt(12)
+            run.font.color.rgb = RGBColor(255, 255, 255)
+            # Shade the paragraph
+            pPr = p._p.get_or_add_pPr()
+            shd = OxmlElement('w:shd')
+            shd.set(qn('w:val'), 'clear')
+            shd.set(qn('w:color'), 'auto')
+            shd.set(qn('w:fill'), '667eea')
+            pPr.append(shd)
+
+            if sec_inst:
+                add_para(sec_inst, italic=True, size=9, space_before=2,
+                         space_after=6, color=(113, 128, 150))
+
+            q_type = sec.get('type', '')
+            for q in sec.get('questions', []):
+                marks = q.get('marks', 1)
+                marks_str = f"[{marks} mark{'s' if marks > 1 else ''}]"
+
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(6)
+                p.paragraph_format.space_after  = Pt(2)
+
+                # Question number
+                r_num = p.add_run(f"{q_num}. ")
+                r_num.bold = True
+                r_num.font.size = Pt(11)
+                r_num.font.color.rgb = RGBColor(102, 126, 234)
+
+                # Question text
+                r_text = p.add_run(q.get('text', ''))
+                r_text.font.size = Pt(11)
+
+                # Marks
+                tab_run = p.add_run(f"  {marks_str}")
+                tab_run.font.size = Pt(9)
+                tab_run.font.color.rgb = RGBColor(113, 128, 150)
+
+                # Type-specific extras
+                if q_type == 'mcq' and q.get('options'):
+                    for idx, opt in enumerate(q['options']):
+                        label = chr(65 + idx)  # A, B, C, D
+                        op = doc.add_paragraph()
+                        op.paragraph_format.left_indent = Inches(0.4)
+                        op.paragraph_format.space_after = Pt(1)
+                        r = op.add_run(f"({label}) {opt}")
+                        r.font.size = Pt(10)
+
+                elif q_type == 'fill_blank':
+                    pass  # blanks already in text as ___
+
+                elif q_type == 'match' and q.get('column_a') and q.get('column_b'):
+                    col_a = q['column_a']
+                    col_b = q['column_b']
+                    table = doc.add_table(rows=1, cols=2)
+                    table.style = 'Table Grid'
+                    hdr = table.rows[0].cells
+                    hdr[0].text = 'Column A'
+                    hdr[1].text = 'Column B'
+                    for hc in hdr:
+                        for r in hc.paragraphs:
+                            for run in r.runs:
+                                run.bold = True
+                                run.font.size = Pt(9)
+                    for i in range(max(len(col_a), len(col_b))):
+                        row = table.add_row().cells
+                        row[0].text = f"{i+1}. {col_a[i] if i < len(col_a) else ''}"
+                        row[1].text = f"{chr(97+i)}) {col_b[i] if i < len(col_b) else ''}"
+                        for c in row:
+                            for para in c.paragraphs:
+                                for run in para.runs:
+                                    run.font.size = Pt(10)
+                    doc.add_paragraph()
+
+                elif q_type == 'reading_passage' and q.get('passage'):
+                    pp = doc.add_paragraph()
+                    pp.paragraph_format.left_indent  = Inches(0.3)
+                    pp.paragraph_format.space_before = Pt(4)
+                    pp.paragraph_format.space_after  = Pt(4)
+                    r = pp.add_run(q['passage'])
+                    r.font.size = Pt(10)
+                    r.italic = True
+                    if q.get('sub_questions'):
+                        for si, sq in enumerate(q['sub_questions'], 1):
+                            sp = doc.add_paragraph()
+                            sp.paragraph_format.left_indent = Inches(0.4)
+                            sp.paragraph_format.space_after = Pt(2)
+                            r2 = sp.add_run(f"({si}) {sq}")
+                            r2.font.size = Pt(10)
+
+                elif q_type == 'true_false':
+                    # Add True/False indicator
+                    p.add_run("  [True / False]").font.size = Pt(10)
+
+                q_num += 1
+
+        # ── Answer Key ────────────────────────────────────────────────────────
+        answer_key = paper.get('answer_key', [])
+        if answer_key:
+            doc.add_page_break()
+            add_para("ANSWER KEY", bold=True, size=14,
+                     align=WD_ALIGN_PARAGRAPH.CENTER,
+                     space_before=0, space_after=10, color=(72, 187, 120))
+            add_horizontal_rule(doc)
+            doc.add_paragraph()
+
+            # Render in a 3-column table
+            cols = 3
+            rows_needed = (len(answer_key) + cols - 1) // cols
+            table = doc.add_table(rows=rows_needed, cols=cols)
+            table.style = 'Table Grid'
+            idx = 0
+            for row in table.rows:
+                for cell in row.cells:
+                    if idx < len(answer_key):
+                        ak = answer_key[idx]
+                        cell.text = f"{ak.get('q_id', '')}: {ak.get('answer', '')}"
+                        for para in cell.paragraphs:
+                            for run in para.runs:
+                                run.font.size = Pt(9)
+                        idx += 1
+
+        # ── Save & return ─────────────────────────────────────────────────────
+        buf = io.BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+
+        subject_slug = subject.replace(' ', '_')[:20]
+        class_val    = info.get('class', 'X')
+        filename     = f"QuestionPaper_{subject_slug}_Class{class_val}.docx"
+
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
