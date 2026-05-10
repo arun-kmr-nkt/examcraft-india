@@ -20,7 +20,28 @@
         <span class="logo-sub">AI-Powered Exam Platform</span>
       </div>
     </div>
-    <div class="header-badge">NCERT Aligned • Classes 1–12</div>
+    <div class="header-actions">
+      <div class="header-badge">NCERT Aligned &bull; Classes 1&ndash;12</div>
+      <button class="btn-history" onclick="openHistoryPanel()" title="View History">
+        &#128196; History
+      </button>
+      <!-- Login / Profile area (managed by JS) -->
+      <div id="auth-area">
+        <a href="/auth/login" class="btn-login" id="login-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+          Sign in with Google
+        </a>
+        <div class="profile-chip" id="profile-chip" style="display:none" onclick="toggleProfileMenu()">
+          <img id="profile-pic" src="" alt="" class="profile-pic" />
+          <span id="profile-name"></span>
+          <span class="profile-caret">&#9660;</span>
+        </div>
+        <div class="profile-menu" id="profile-menu" style="display:none">
+          <div class="profile-menu-email" id="profile-email"></div>
+          <a href="/auth/logout" class="profile-menu-item logout-item">&#128274; Sign Out</a>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -128,8 +149,12 @@
               <option value="mixed" selected>Mixed (30% Easy, 50% Medium, 20% Hard)</option>
               <option value="easy">Easy (Recall-based)</option>
               <option value="medium">Medium (Understanding-based)</option>
-              <option value="hard">Hard (Application & Analysis)</option>
+              <option value="hard">Hard (Application &amp; Analysis)</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label for="teacher_name">Teacher's Name <span class="optional-badge">Optional</span></label>
+            <input type="text" id="teacher_name" placeholder="e.g. Mrs. Sharma" maxlength="100" />
           </div>
         </div>
         <div class="btn-row">
@@ -187,7 +212,7 @@
     <div class="card">
       <div class="card-header">
         <h2>&#10067; Question Type Configuration</h2>
-        <p>Set the number and marks for each type of question</p>
+        <p id="qt-subject-hint">Set the number and marks for each type of question</p>
       </div>
       <div class="card-body">
 
@@ -201,175 +226,9 @@
           </div>
         </div>
 
-        <div class="qt-grid">
-          <!-- MCQ -->
-          <div class="qt-card" id="qt-mcq">
-            <div class="qt-header">
-              <div class="qt-toggle">
-                <input type="checkbox" id="enable-mcq" onchange="toggleQType('mcq')" checked />
-                <label for="enable-mcq">
-                  <span class="qt-icon">&#9711;</span>
-                  <strong>Multiple Choice (MCQ)</strong>
-                </label>
-              </div>
-              <span class="qt-badge">4 options</span>
-            </div>
-            <div class="qt-inputs" id="inputs-mcq">
-              <div class="qt-row">
-                <div class="qt-field">
-                  <label>Number of Questions</label>
-                  <input type="number" id="mcq-count" value="10" min="1" max="50" onchange="updateMarksTotal()" />
-                </div>
-                <div class="qt-field">
-                  <label>Marks per Question</label>
-                  <input type="number" id="mcq-marks" value="1" min="1" max="10" onchange="updateMarksTotal()" />
-                </div>
-                <div class="qt-total">
-                  = <span id="mcq-total">10</span> marks
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Fill in the Blanks -->
-          <div class="qt-card" id="qt-fill_blank">
-            <div class="qt-header">
-              <div class="qt-toggle">
-                <input type="checkbox" id="enable-fill_blank" onchange="toggleQType('fill_blank')" checked />
-                <label for="enable-fill_blank">
-                  <span class="qt-icon">&#9135;</span>
-                  <strong>Fill in the Blanks</strong>
-                </label>
-              </div>
-            </div>
-            <div class="qt-inputs" id="inputs-fill_blank">
-              <div class="qt-row">
-                <div class="qt-field">
-                  <label>Number of Questions</label>
-                  <input type="number" id="fill_blank-count" value="5" min="1" max="30" onchange="updateMarksTotal()" />
-                </div>
-                <div class="qt-field">
-                  <label>Marks per Question</label>
-                  <input type="number" id="fill_blank-marks" value="1" min="1" max="5" onchange="updateMarksTotal()" />
-                </div>
-                <div class="qt-total">
-                  = <span id="fill_blank-total">5</span> marks
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Match the Following -->
-          <div class="qt-card" id="qt-match">
-            <div class="qt-header">
-              <div class="qt-toggle">
-                <input type="checkbox" id="enable-match" onchange="toggleQType('match')" />
-                <label for="enable-match">
-                  <span class="qt-icon">&#8596;</span>
-                  <strong>Match the Following</strong>
-                </label>
-              </div>
-            </div>
-            <div class="qt-inputs disabled" id="inputs-match">
-              <div class="qt-row">
-                <div class="qt-field">
-                  <label>Number of Sets</label>
-                  <input type="number" id="match-count" value="1" min="1" max="5" onchange="updateMarksTotal()" disabled />
-                </div>
-                <div class="qt-field">
-                  <label>Marks per Set</label>
-                  <input type="number" id="match-marks" value="5" min="1" max="20" onchange="updateMarksTotal()" disabled />
-                </div>
-                <div class="qt-total">
-                  = <span id="match-total">0</span> marks
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- True / False -->
-          <div class="qt-card" id="qt-true_false">
-            <div class="qt-header">
-              <div class="qt-toggle">
-                <input type="checkbox" id="enable-true_false" onchange="toggleQType('true_false')" />
-                <label for="enable-true_false">
-                  <span class="qt-icon">&#10003;</span>
-                  <strong>True / False</strong>
-                </label>
-              </div>
-            </div>
-            <div class="qt-inputs disabled" id="inputs-true_false">
-              <div class="qt-row">
-                <div class="qt-field">
-                  <label>Number of Questions</label>
-                  <input type="number" id="true_false-count" value="5" min="1" max="20" onchange="updateMarksTotal()" disabled />
-                </div>
-                <div class="qt-field">
-                  <label>Marks per Question</label>
-                  <input type="number" id="true_false-marks" value="1" min="1" max="3" onchange="updateMarksTotal()" disabled />
-                </div>
-                <div class="qt-total">
-                  = <span id="true_false-total">0</span> marks
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Short Answer -->
-          <div class="qt-card" id="qt-short_answer">
-            <div class="qt-header">
-              <div class="qt-toggle">
-                <input type="checkbox" id="enable-short_answer" onchange="toggleQType('short_answer')" checked />
-                <label for="enable-short_answer">
-                  <span class="qt-icon">&#128221;</span>
-                  <strong>Short Answer Type</strong>
-                </label>
-              </div>
-            </div>
-            <div class="qt-inputs" id="inputs-short_answer">
-              <div class="qt-row">
-                <div class="qt-field">
-                  <label>Number of Questions</label>
-                  <input type="number" id="short_answer-count" value="5" min="1" max="20" onchange="updateMarksTotal()" />
-                </div>
-                <div class="qt-field">
-                  <label>Marks per Question</label>
-                  <input type="number" id="short_answer-marks" value="3" min="1" max="10" onchange="updateMarksTotal()" />
-                </div>
-                <div class="qt-total">
-                  = <span id="short_answer-total">15</span> marks
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Diagram Based -->
-          <div class="qt-card" id="qt-diagram">
-            <div class="qt-header">
-              <div class="qt-toggle">
-                <input type="checkbox" id="enable-diagram" onchange="toggleQType('diagram')" />
-                <label for="enable-diagram">
-                  <span class="qt-icon">&#128444;</span>
-                  <strong>Diagram / Long Answer</strong>
-                </label>
-              </div>
-            </div>
-            <div class="qt-inputs disabled" id="inputs-diagram">
-              <div class="qt-row">
-                <div class="qt-field">
-                  <label>Number of Questions</label>
-                  <input type="number" id="diagram-count" value="2" min="1" max="10" onchange="updateMarksTotal()" disabled />
-                </div>
-                <div class="qt-field">
-                  <label>Marks per Question</label>
-                  <input type="number" id="diagram-marks" value="5" min="2" max="20" onchange="updateMarksTotal()" disabled />
-                </div>
-                <div class="qt-total">
-                  = <span id="diagram-total">0</span> marks
-                </div>
-              </div>
-            </div>
-          </div>
+        <!-- Dynamic question type cards loaded here -->
+        <div id="qt-grid" class="qt-grid">
+          <div class="loading-chapters">Select a subject to load question types...</div>
         </div>
 
         <div class="btn-row">
@@ -446,7 +305,7 @@
     <div id="evaluation-report" style="display:none;">
       <div class="report-header-card">
         <div class="report-header-inner">
-          <div class="report-logo">ExamCraft India — Evaluation Report</div>
+          <div class="report-logo">ExamCraft India &mdash; Evaluation Report</div>
           <div class="report-meta" id="report-meta"></div>
         </div>
         <div class="report-score-box">
@@ -493,12 +352,24 @@
 
 </main>
 
+<!-- ===== HISTORY PANEL ===== -->
+<div class="history-overlay" id="history-overlay" onclick="closeHistoryPanel()"></div>
+<div class="history-panel" id="history-panel">
+  <div class="history-panel-header">
+    <h3>&#128196; Paper History</h3>
+    <button class="history-close-btn" onclick="closeHistoryPanel()">&#10005;</button>
+  </div>
+  <div class="history-panel-body" id="history-panel-body">
+    <div class="loading-chapters">Loading history...</div>
+  </div>
+</div>
+
 <!-- ===== LOADING OVERLAY ===== -->
 <div class="loading-overlay" id="loading-overlay" style="display:none;">
   <div class="loading-box">
     <div class="spinner"></div>
     <div class="loading-title" id="loading-title">Generating Question Paper...</div>
-    <div class="loading-sub" id="loading-sub">Claude AI is crafting curriculum-aligned questions</div>
+    <div class="loading-sub" id="loading-sub">AI is crafting curriculum-aligned questions</div>
   </div>
 </div>
 
@@ -508,7 +379,7 @@
 <!-- ===== FOOTER ===== -->
 <footer class="site-footer">
   <div>ExamCraft India &copy; 2025 &mdash; NCERT Aligned Question Paper Generator &amp; Evaluator</div>
-  <div>Powered by Claude AI &bull; All Boards &bull; Classes 1–12</div>
+  <div>Powered by Google Gemini AI &bull; All Boards &bull; Classes 1&ndash;12</div>
 </footer>
 
 <script src="/static/js/app.js"></script>
