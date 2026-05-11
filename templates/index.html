@@ -313,6 +313,16 @@
             <div class="loading-chapters">Loading chapters...</div>
           </div>
 
+          <div id="custom-chapters-section" style="display:none;">
+            <div class="custom-section-header">&#10022; Custom Chapters</div>
+            <div id="custom-chapters-container" class="chapters-grid"></div>
+          </div>
+
+          <div class="add-custom-chapter-row">
+            <input type="text" id="custom-chapter-input" placeholder="Add a custom chapter..." onkeydown="if(event.key==='Enter') addCustomChapter()" />
+            <button class="btn btn-outline btn-sm" onclick="addCustomChapter()">&#43; Add Chapter</button>
+          </div>
+
           <div class="divider"></div>
 
           <div class="upload-section">

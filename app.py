@@ -271,6 +271,16 @@ class UserSubscription(db.Model):
     created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class CustomChapter(db.Model):
+    __tablename__ = 'custom_chapters'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    subject    = db.Column(db.String(100), nullable=False)
+    class_num  = db.Column(db.String(10), nullable=False)
+    chapter    = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class ContactRequest(db.Model):
     __tablename__ = 'contact_requests'
     id           = db.Column(db.Integer, primary_key=True)
@@ -1305,6 +1315,51 @@ def get_chapters():
                         chapters.append(f"{sub_topic}: {ch}")
 
     return jsonify({'chapters': chapters})
+
+
+@app.route('/api/custom-chapters', methods=['GET'])
+def list_custom_chapters():
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    subject   = request.args.get('subject', '')
+    class_num = request.args.get('class_num', '')
+    rows = CustomChapter.query.filter_by(
+        user_id=current_user.id, subject=subject, class_num=class_num
+    ).order_by(CustomChapter.created_at).all()
+    return jsonify({'chapters': [{'id': r.id, 'chapter': r.chapter} for r in rows]})
+
+
+@app.route('/api/custom-chapters', methods=['POST'])
+def add_custom_chapter():
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    data      = request.json
+    chapter   = (data.get('chapter') or '').strip()
+    subject   = data.get('subject', '')
+    class_num = str(data.get('class_num', ''))
+    if not chapter:
+        return jsonify({'error': 'Chapter name required'}), 400
+    existing = CustomChapter.query.filter_by(
+        user_id=current_user.id, subject=subject, class_num=class_num, chapter=chapter
+    ).first()
+    if existing:
+        return jsonify({'id': existing.id, 'chapter': existing.chapter})
+    c = CustomChapter(user_id=current_user.id, subject=subject, class_num=class_num, chapter=chapter)
+    db.session.add(c)
+    db.session.commit()
+    return jsonify({'id': c.id, 'chapter': c.chapter}), 201
+
+
+@app.route('/api/custom-chapters/<int:chapter_id>', methods=['DELETE'])
+def delete_custom_chapter(chapter_id):
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    c = db.session.get(CustomChapter, chapter_id)
+    if not c or c.user_id != current_user.id:
+        return jsonify({'error': 'Not found'}), 404
+    db.session.delete(c)
+    db.session.commit()
+    return jsonify({'success': True})
 
 
 @app.route('/api/question-types', methods=['GET'])

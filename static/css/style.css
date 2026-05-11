@@ -432,6 +432,64 @@ body {
   font-size: 0.9rem;
 }
 
+.custom-section-header {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin: 1.25rem 0 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.custom-section-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.add-custom-chapter-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  align-items: center;
+}
+.add-custom-chapter-row input {
+  flex: 1;
+  padding: 0.45rem 0.75rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+.add-custom-chapter-row input:focus {
+  border-color: var(--primary);
+}
+
+.chapter-delete-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.chapter-delete-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 /* ===== UPLOAD ZONE ===== */
 .divider {
   height: 1px;

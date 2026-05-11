@@ -458,29 +458,156 @@ async function loadChapters() {
     container.innerHTML = '';
     if (!data.chapters || data.chapters.length === 0) {
       container.innerHTML = '<div class="loading-chapters">No chapters found for this subject/class.</div>';
-      return;
-    }
-
-    data.chapters.forEach((ch, idx) => {
-      const item = document.createElement('div');
-      item.className = 'chapter-item';
-      item.dataset.chapter = ch;
-      item.innerHTML = `
-        <input type="checkbox" id="ch-${idx}" onchange="toggleChapter('${escapeAttr(ch)}', this.checked)" />
-        <span>${escapeHtml(ch)}</span>
-      `;
-      item.addEventListener('click', (e) => {
-        if (e.target.tagName !== 'INPUT') {
-          const cb = item.querySelector('input');
-          cb.checked = !cb.checked;
-          toggleChapter(ch, cb.checked);
-        }
+    } else {
+      data.chapters.forEach((ch, idx) => {
+        const item = document.createElement('div');
+        item.className = 'chapter-item';
+        item.dataset.chapter = ch;
+        item.innerHTML = `
+          <input type="checkbox" id="ch-${idx}" onchange="toggleChapter('${escapeAttr(ch)}', this.checked)" />
+          <span>${escapeHtml(ch)}</span>
+        `;
+        item.addEventListener('click', (e) => {
+          if (e.target.tagName !== 'INPUT') {
+            const cb = item.querySelector('input');
+            cb.checked = !cb.checked;
+            toggleChapter(ch, cb.checked);
+          }
+        });
+        container.appendChild(item);
       });
-      container.appendChild(item);
-    });
+    }
+    await loadCustomChapters();
   } catch (e) {
     container.innerHTML = '<div class="loading-chapters">Error loading chapters. Please try again.</div>';
   }
+}
+
+/* ── Custom chapter localStorage helpers (fallback for unauthenticated users) ── */
+function _customKey() {
+  return `${state.subject}__${state.classNum}`;
+}
+function _getLocalCustomChapters() {
+  try {
+    const all = JSON.parse(localStorage.getItem('examcraft_custom_chapters') || '{}');
+    return all[_customKey()] || [];
+  } catch { return []; }
+}
+function _setLocalCustomChapters(chapters) {
+  try {
+    const all = JSON.parse(localStorage.getItem('examcraft_custom_chapters') || '{}');
+    all[_customKey()] = chapters;
+    localStorage.setItem('examcraft_custom_chapters', JSON.stringify(all));
+  } catch {}
+}
+
+async function loadCustomChapters() {
+  let chapters = [];
+  try {
+    const res = await fetch(`/api/custom-chapters?subject=${encodeURIComponent(state.subject)}&class_num=${encodeURIComponent(state.classNum)}`);
+    if (res.status === 401) {
+      chapters = _getLocalCustomChapters();
+    } else {
+      const data = await res.json();
+      chapters = data.chapters || [];
+    }
+  } catch {
+    chapters = _getLocalCustomChapters();
+  }
+  renderCustomChapters(chapters);
+}
+
+function renderCustomChapters(chapters) {
+  const section = document.getElementById('custom-chapters-section');
+  const container = document.getElementById('custom-chapters-container');
+  if (!section || !container) return;
+
+  if (chapters.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  container.innerHTML = '';
+  chapters.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'chapter-item';
+    div.dataset.chapter = item.chapter;
+    div.dataset.customId = String(item.id);
+    const isSelected = state.selectedChapters.includes(item.chapter);
+    if (isSelected) div.classList.add('selected');
+    div.innerHTML = `
+      <input type="checkbox" id="cch-${idx}" ${isSelected ? 'checked' : ''} onchange="toggleChapter('${escapeAttr(item.chapter)}', this.checked)" />
+      <span>${escapeHtml(item.chapter)}</span>
+      <button class="chapter-delete-btn" title="Remove custom chapter" onclick="removeCustomChapter('${escapeAttr(String(item.id))}', event)">&#10005;</button>
+    `;
+    div.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') {
+        const cb = div.querySelector('input');
+        cb.checked = !cb.checked;
+        toggleChapter(item.chapter, cb.checked);
+      }
+    });
+    container.appendChild(div);
+  });
+}
+
+async function addCustomChapter() {
+  const input = document.getElementById('custom-chapter-input');
+  const chapter = input.value.trim();
+  if (!chapter) { showToast('Please enter a chapter name.', 'error'); return; }
+
+  try {
+    const res = await fetch('/api/custom-chapters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject: state.subject, class_num: state.classNum, chapter })
+    });
+    if (res.status === 401) {
+      const chapters = _getLocalCustomChapters();
+      const id = Date.now().toString();
+      chapters.push({ id, chapter });
+      _setLocalCustomChapters(chapters);
+      renderCustomChapters(chapters);
+    } else {
+      await loadCustomChapters();
+    }
+  } catch {
+    const chapters = _getLocalCustomChapters();
+    chapters.push({ id: Date.now().toString(), chapter });
+    _setLocalCustomChapters(chapters);
+    renderCustomChapters(chapters);
+  }
+
+  input.value = '';
+  showToast('Custom chapter added!', 'success');
+}
+
+async function removeCustomChapter(id, event) {
+  event.stopPropagation();
+  const el = document.querySelector(`[data-custom-id="${CSS.escape(id)}"]`);
+  const chapterName = el ? el.dataset.chapter : null;
+
+  try {
+    const res = await fetch(`/api/custom-chapters/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (res.status === 401) {
+      const chapters = _getLocalCustomChapters().filter(c => String(c.id) !== id);
+      _setLocalCustomChapters(chapters);
+      renderCustomChapters(chapters);
+    } else {
+      await loadCustomChapters();
+    }
+  } catch {
+    const chapters = _getLocalCustomChapters().filter(c => String(c.id) !== id);
+    _setLocalCustomChapters(chapters);
+    renderCustomChapters(chapters);
+  }
+
+  if (chapterName) {
+    state.selectedChapters = state.selectedChapters.filter(c => c !== chapterName);
+    updateChapterCount();
+  }
+  showToast('Custom chapter removed.', 'success');
 }
 
 function toggleChapter(chapter, checked) {
