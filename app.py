@@ -79,15 +79,26 @@ else:
 
 class User(UserMixin, db.Model):
     __tablename__ = 'users'
-    id         = db.Column(db.Integer, primary_key=True)
-    google_id  = db.Column(db.String(128), unique=True, nullable=False)
-    email      = db.Column(db.String(256), unique=True, nullable=False)
-    name       = db.Column(db.String(256))
-    picture    = db.Column(db.String(512))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    id            = db.Column(db.Integer, primary_key=True)
+    google_id     = db.Column(db.String(128), unique=True, nullable=True)   # optional
+    email         = db.Column(db.String(256), unique=True, nullable=False)
+    name          = db.Column(db.String(256))
+    picture       = db.Column(db.String(512))
+    password_hash = db.Column(db.String(256))
+    created_at    = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     papers      = db.relationship('QuestionPaper', backref='user', lazy=True)
     evaluations = db.relationship('Evaluation', backref='user', lazy=True)
+
+    def set_password(self, password):
+        from werkzeug.security import generate_password_hash
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        from werkzeug.security import check_password_hash
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
 
 
 class QuestionPaper(db.Model):
@@ -942,13 +953,57 @@ QUESTION_TYPE_DESCRIPTIONS = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# GOOGLE OAUTH ROUTES
+# AUTH ROUTES — email/password (primary) + optional Google OAuth
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@app.route('/auth/login')
+@app.route('/auth/register', methods=['POST'])
+def auth_register():
+    """Create a new account with name, email, password."""
+    data     = request.get_json(silent=True) or {}
+    name     = data.get('name', '').strip()
+    email    = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not name or not email or not password:
+        return jsonify({'error': 'All fields are required.'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters.'}), 400
+    if '@' not in email:
+        return jsonify({'error': 'Please enter a valid email address.'}), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify({'error': 'An account with this email already exists.'}), 409
+
+    user = User(name=name, email=email)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    login_user(user, remember=True)
+    return jsonify({'success': True, 'name': user.name, 'email': user.email})
+
+
+@app.route('/auth/login', methods=['POST'])
 def auth_login():
+    """Sign in with email and password."""
+    data     = request.get_json(silent=True) or {}
+    email    = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required.'}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user or not user.check_password(password):
+        return jsonify({'error': 'Invalid email or password.'}), 401
+
+    login_user(user, remember=True)
+    return jsonify({'success': True, 'name': user.name, 'email': user.email})
+
+
+@app.route('/auth/google')
+def auth_google():
+    """Optional: sign in via Google OAuth (only works if GOOGLE_CLIENT_ID/SECRET are set)."""
     if not _OAUTH_CONFIGURED:
-        return jsonify({'error': 'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.'}), 503
+        return jsonify({'error': 'Google OAuth is not configured on this server.'}), 503
     redirect_uri = url_for('auth_callback', _external=True)
     return google_oauth.authorize_redirect(redirect_uri)
 
@@ -956,12 +1011,10 @@ def auth_login():
 @app.route('/auth/callback')
 def auth_callback():
     if not _OAUTH_CONFIGURED:
-        return jsonify({'error': 'Google OAuth is not configured.'}), 503
+        return redirect('/')
     try:
-        token = google_oauth.authorize_access_token()
-        user_info = token.get('userinfo')
-        if not user_info:
-            user_info = google_oauth.userinfo()
+        token     = google_oauth.authorize_access_token()
+        user_info = token.get('userinfo') or google_oauth.userinfo()
 
         google_id = user_info['sub']
         email     = user_info.get('email', '')
@@ -970,8 +1023,14 @@ def auth_callback():
 
         user = User.query.filter_by(google_id=google_id).first()
         if not user:
-            user = User(google_id=google_id, email=email, name=name, picture=picture)
-            db.session.add(user)
+            # Check if account exists by email (e.g. registered with password earlier)
+            user = User.query.filter_by(email=email).first()
+            if user:
+                user.google_id = google_id
+                user.picture   = picture
+            else:
+                user = User(google_id=google_id, email=email, name=name, picture=picture)
+                db.session.add(user)
         else:
             user.name    = name
             user.picture = picture
@@ -980,7 +1039,7 @@ def auth_callback():
         login_user(user, remember=True)
         return redirect('/')
     except Exception as e:
-        return jsonify({'error': f'OAuth callback failed: {str(e)}'}), 500
+        return redirect('/?auth_error=1')
 
 
 @app.route('/auth/logout')
@@ -995,15 +1054,16 @@ def api_user():
         plan_key, plan_info = get_user_plan(current_user.id)
         usage = get_user_usage(current_user.id)
         return jsonify({
-            'logged_in': True,
-            'name':      current_user.name,
-            'email':     current_user.email,
-            'picture':   current_user.picture,
-            'plan':      plan_key,
-            'plan_info': plan_info,
-            'usage':     usage,
+            'logged_in':       True,
+            'name':            current_user.name,
+            'email':           current_user.email,
+            'picture':         current_user.picture,
+            'plan':            plan_key,
+            'plan_info':       plan_info,
+            'usage':           usage,
+            'oauth_available': _OAUTH_CONFIGURED,
         })
-    return jsonify({'logged_in': False})
+    return jsonify({'logged_in': False, 'oauth_available': _OAUTH_CONFIGURED})
 
 
 @app.route('/api/plans')
@@ -1810,6 +1870,31 @@ def download_word():
 
 with app.app_context():
     db.create_all()
+
+    # ── Schema migrations for existing databases ──────────────────────────────
+    from sqlalchemy import inspect as sa_inspect, text as sa_text
+    insp = sa_inspect(db.engine)
+    if 'users' in insp.get_table_names():
+        existing_cols = {c['name'] for c in insp.get_columns('users')}
+        db_url = str(db.engine.url)
+
+        with db.engine.connect() as conn:
+            # Add password_hash column if missing
+            if 'password_hash' not in existing_cols:
+                try:
+                    conn.execute(sa_text('ALTER TABLE users ADD COLUMN password_hash VARCHAR(256)'))
+                    conn.commit()
+                except Exception:
+                    pass
+
+            # Make google_id nullable (PostgreSQL only — SQLite doesn't support this but
+            # fresh SQLite DBs already have the correct nullable schema)
+            if 'postgresql' in db_url:
+                try:
+                    conn.execute(sa_text('ALTER TABLE users ALTER COLUMN google_id DROP NOT NULL'))
+                    conn.commit()
+                except Exception:
+                    pass
 
 
 if __name__ == '__main__':

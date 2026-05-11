@@ -39,8 +39,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('usage-badge').style.display = 'none';
     document.getElementById('upgrade-btn').style.display = 'none';
 
-    // Check if OAuth is configured (if login button leads to 503 we show warning)
-    checkOAuthConfigured();
+    // Show Google OAuth section in modal if available
+    if (user.oauth_available) {
+      const sec = document.getElementById('auth-google-section');
+      if (sec) sec.style.display = 'block';
+    }
     return; // stop app init
   }
 
@@ -73,21 +76,103 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
-/* ===== OAUTH CONFIG CHECK ===== */
-async function checkOAuthConfigured() {
+/* ===== AUTH MODAL ===== */
+function openAuthModal(tab = 'login') {
+  document.getElementById('auth-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  switchAuthTab(tab);
+  // Clear previous errors
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('register-error').style.display = 'none';
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function handleAuthModalOverlayClick(event) {
+  if (event.target === document.getElementById('auth-modal')) {
+    closeAuthModal();
+  }
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const btn = document.getElementById('login-submit-btn');
+  const errEl = document.getElementById('login-error');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  errEl.style.display = 'none';
   try {
-    const res = await fetch('/api/user');
-    // If the response is OK, OAuth might be configured even if not logged in
-    // We check by seeing if login btn href is usable — just show it normally
-    // If the server returns 503 on /auth/login, we show the warning
-    const testRes = await fetch('/auth/login', { method: 'HEAD', redirect: 'manual' });
-    if (testRes.status === 503) {
-      document.getElementById('hero-login-btn').style.display = 'none';
-      document.getElementById('oauth-not-configured').style.display = 'block';
-      document.getElementById('login-btn').style.display = 'none';
+    const res = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('login-email').value.trim(),
+        password: document.getElementById('login-password').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+    } else {
+      window.location.reload();
     }
   } catch (e) {
-    // ignore
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+async function handleRegister(event) {
+  event.preventDefault();
+  const password = document.getElementById('reg-password').value;
+  const confirm = document.getElementById('reg-confirm').value;
+  const errEl = document.getElementById('register-error');
+  if (password !== confirm) {
+    errEl.textContent = 'Passwords do not match.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('reg-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+  errEl.style.display = 'none';
+  try {
+    const res = await fetch('/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('reg-name').value.trim(),
+        email: document.getElementById('reg-email').value.trim(),
+        password,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+    } else {
+      window.location.reload();
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Free Account';
   }
 }
 
