@@ -4,6 +4,7 @@ import io
 import uuid
 import tempfile
 import re
+import time
 from datetime import datetime, timezone, timedelta
 import smtplib
 from email.mime.text import MIMEText
@@ -343,6 +344,45 @@ def get_gemini_client():
     if not api_key:
         return None
     return genai.Client(api_key=api_key)
+
+
+# Models tried in order — 2.5 Flash first, fall back to 2.0 Flash if unavailable
+_GEMINI_MODELS = ['models/gemini-2.5-flash', 'models/gemini-2.0-flash']
+
+
+def gemini_generate(client, contents, config, max_retries=3):
+    """
+    Call generate_content with retry + exponential backoff for transient errors
+    (503 UNAVAILABLE, 429 RESOURCE_EXHAUSTED, 500 INTERNAL).
+    Falls back to gemini-2.0-flash if 2.5-flash is persistently unavailable.
+    """
+    _RETRYABLE = ('503', '429', '500', 'UNAVAILABLE', 'RESOURCE_EXHAUSTED', 'INTERNAL')
+
+    for model in _GEMINI_MODELS:
+        last_err = None
+        for attempt in range(max_retries + 1):
+            try:
+                resp = client.models.generate_content(
+                    model=model, contents=contents, config=config)
+                if attempt > 0 or model != _GEMINI_MODELS[0]:
+                    print(f'[GEMINI] Success with {model} on attempt {attempt + 1}')
+                return resp
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if not any(code in err_str for code in _RETRYABLE):
+                    raise          # non-transient — don't retry
+                if attempt < max_retries:
+                    wait = 2 ** (attempt + 1)   # 2 s, 4 s, 8 s
+                    print(f'[GEMINI] {model} attempt {attempt + 1} failed ({err_str[:100]}), '
+                          f'retrying in {wait}s…')
+                    time.sleep(wait)
+                else:
+                    print(f'[GEMINI] {model} exhausted {max_retries} retries — '
+                          f'{"trying fallback model" if model == _GEMINI_MODELS[0] else "giving up"}')
+        # If we get here all retries for this model failed — try next model
+
+    raise last_err   # all models exhausted
 
 
 def extract_json(text):
@@ -1606,8 +1646,8 @@ Generate all questions as specified. Make them appropriate for Class {class_num}
         # Build Gemini content: images first, then the prompt text
         contents = pil_images + [prompt_text]
 
-        response = gemini.models.generate_content(
-            model='models/gemini-2.5-flash',
+        response = gemini_generate(
+            gemini,
             contents=contents,
             config=genai_types.GenerateContentConfig(
                 max_output_tokens=16000,
@@ -1650,7 +1690,15 @@ Generate all questions as specified. Make them appropriate for Class {class_num}
     except json.JSONDecodeError as e:
         return jsonify({'error': f'Failed to parse generated paper: {str(e)}'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        err_str = str(e)
+        if any(x in err_str for x in ('503', 'UNAVAILABLE', 'high demand')):
+            msg = ('The Gemini AI service is temporarily busy. '
+                   'Please wait a moment and try again.')
+        elif '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
+            msg = 'API quota reached. Please try again in a minute.'
+        else:
+            msg = f'Generation failed: {err_str}'
+        return jsonify({'error': msg}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1780,8 +1828,8 @@ Be accurate and fair. Do not inflate or deflate marks."""
             contents.append(answer_image)
         contents.append(eval_prompt)
 
-        response = gemini.models.generate_content(
-            model='models/gemini-2.5-flash',
+        response = gemini_generate(
+            gemini,
             contents=contents,
             config=genai_types.GenerateContentConfig(
                 max_output_tokens=12000,
@@ -1824,7 +1872,15 @@ Be accurate and fair. Do not inflate or deflate marks."""
     except json.JSONDecodeError as e:
         return jsonify({'error': f'Evaluation parsing error: {str(e)}'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        err_str = str(e)
+        if any(x in err_str for x in ('503', 'UNAVAILABLE', 'high demand')):
+            msg = ('The Gemini AI service is temporarily busy. '
+                   'Please wait a moment and try again.')
+        elif '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
+            msg = 'API quota reached. Please try again in a minute.'
+        else:
+            msg = f'Evaluation failed: {err_str}'
+        return jsonify({'error': msg}), 500
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
