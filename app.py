@@ -4,7 +4,10 @@ import io
 import uuid
 import tempfile
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
 from google import genai
@@ -72,6 +75,46 @@ else:
     oauth = None
     google_oauth = None
 
+CONTACT_EMAIL = 'arun.kmr06@gmail.com'
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASS = os.environ.get('SMTP_PASS', '')
+
+
+def send_contact_email(name, email, mobile, school_name, message, request_type):
+    if not SMTP_USER or not SMTP_PASS:
+        return False
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f'ExamCraft India - {"Callback Request" if request_type == "callback" else "Contact Request"} from {name}'
+        msg['From'] = SMTP_USER
+        msg['To'] = CONTACT_EMAIL
+        msg['Reply-To'] = email
+        body = f"""ExamCraft India - New {request_type.title()} Request
+
+Name: {name}
+Email: {email}
+Mobile: {mobile or 'Not provided'}
+School: {school_name or 'Not provided'}
+Type: {request_type.title()}
+
+Message:
+{message or 'No message provided'}
+
+---
+Received at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
+"""
+        msg.attach(MIMEText(body, 'plain'))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(SMTP_USER, CONTACT_EMAIL, msg.as_string())
+        return True
+    except Exception as e:
+        print(f'Email send error: {e}')
+        return False
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DATABASE MODELS
@@ -113,6 +156,8 @@ class QuestionPaper(db.Model):
     teacher_name= db.Column(db.String(256))
     total_marks = db.Column(db.Integer)
     paper_json  = db.Column(db.Text)
+    archived    = db.Column(db.Boolean, default=False, server_default='0', nullable=False)
+    archived_at = db.Column(db.DateTime, nullable=True)
     created_at  = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     evaluations = db.relationship('Evaluation', backref='paper', lazy=True)
@@ -144,6 +189,18 @@ class UserSubscription(db.Model):
     razorpay_sub_id = db.Column(db.String(200))
     period_end      = db.Column(db.DateTime)
     created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ContactRequest(db.Model):
+    __tablename__ = 'contact_requests'
+    id           = db.Column(db.Integer, primary_key=True)
+    name         = db.Column(db.String(256), nullable=False)
+    school_name  = db.Column(db.String(256))
+    email        = db.Column(db.String(256), nullable=False)
+    mobile       = db.Column(db.String(20))
+    message      = db.Column(db.Text)
+    request_type = db.Column(db.String(20), default='contact')
+    created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 @login_manager.user_loader
@@ -1138,22 +1195,46 @@ def get_question_types():
 def get_history():
     if not current_user.is_authenticated:
         return jsonify({'error': 'auth_required'}), 401
-    papers = QuestionPaper.query.filter_by(user_id=current_user.id).order_by(QuestionPaper.created_at.desc()).all()
+
+    view = request.args.get('view', 'active')
+
+    # Auto-archive papers older than 6 months
+    six_months_ago = datetime.now(timezone.utc) - timedelta(days=182)
+    old_papers = QuestionPaper.query.filter_by(
+        user_id=current_user.id, archived=False
+    ).filter(QuestionPaper.created_at < six_months_ago).all()
+    if old_papers:
+        now_utc = datetime.now(timezone.utc)
+        for p in old_papers:
+            p.archived = True
+            p.archived_at = now_utc
+        db.session.commit()
+
+    if view == 'archived':
+        papers = QuestionPaper.query.filter_by(
+            user_id=current_user.id, archived=True
+        ).order_by(QuestionPaper.created_at.desc()).all()
+    else:
+        papers = QuestionPaper.query.filter_by(
+            user_id=current_user.id, archived=False
+        ).order_by(QuestionPaper.created_at.desc()).all()
 
     result = []
     for p in papers:
         result.append({
-            'id':           p.id,
-            'board':        p.board,
-            'class_num':    p.class_num,
-            'subject':      p.subject,
-            'exam_type':    p.exam_type,
-            'teacher_name': p.teacher_name,
-            'total_marks':  p.total_marks,
-            'created_at':   p.created_at.isoformat() if p.created_at else None,
+            'id':               p.id,
+            'board':            p.board,
+            'class_num':        p.class_num,
+            'subject':          p.subject,
+            'exam_type':        p.exam_type,
+            'teacher_name':     p.teacher_name,
+            'total_marks':      p.total_marks,
+            'created_at':       p.created_at.isoformat() if p.created_at else None,
             'evaluation_count': len(p.evaluations),
+            'archived':         p.archived,
+            'archived_at':      p.archived_at.isoformat() if p.archived_at else None,
         })
-    return jsonify({'papers': result})
+    return jsonify({'papers': result, 'view': view})
 
 
 @app.route('/api/history/<int:paper_id>', methods=['GET'])
@@ -1203,6 +1284,61 @@ def get_history_paper(paper_id):
         'paper':        paper_data,
         'evaluations':  evaluations,
     })
+
+
+@app.route('/api/history/<int:paper_id>/archive', methods=['POST'])
+def archive_paper(paper_id):
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    paper = db.session.get(QuestionPaper, paper_id)
+    if not paper or paper.user_id != current_user.id:
+        return jsonify({'error': 'Not found'}), 404
+    paper.archived = True
+    paper.archived_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/history/<int:paper_id>/unarchive', methods=['POST'])
+def unarchive_paper(paper_id):
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    paper = db.session.get(QuestionPaper, paper_id)
+    if not paper or paper.user_id != current_user.id:
+        return jsonify({'error': 'Not found'}), 404
+    paper.archived = False
+    paper.archived_at = None
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@app.route('/api/contact', methods=['POST'])
+def submit_contact():
+    data = request.get_json(silent=True) or {}
+    name         = data.get('name', '').strip()
+    email        = data.get('email', '').strip().lower()
+    mobile       = data.get('mobile', '').strip()
+    school_name  = data.get('school_name', '').strip()
+    message      = data.get('message', '').strip()
+    request_type = data.get('request_type', 'contact')
+
+    if not name:
+        return jsonify({'error': 'Name is required.'}), 400
+    if not email or '@' not in email:
+        return jsonify({'error': 'Valid email is required.'}), 400
+    if request_type == 'callback' and not mobile:
+        return jsonify({'error': 'Mobile number is required for a callback request.'}), 400
+
+    req = ContactRequest(
+        name=name, email=email, mobile=mobile,
+        school_name=school_name, message=message,
+        request_type=request_type,
+    )
+    db.session.add(req)
+    db.session.commit()
+
+    email_sent = send_contact_email(name, email, mobile, school_name, message, request_type)
+    return jsonify({'success': True, 'email_sent': email_sent})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1892,6 +2028,23 @@ with app.app_context():
             if 'postgresql' in db_url:
                 try:
                     conn.execute(sa_text('ALTER TABLE users ALTER COLUMN google_id DROP NOT NULL'))
+                    conn.commit()
+                except Exception:
+                    pass
+
+    # Migrate question_papers table
+    if 'question_papers' in insp.get_table_names():
+        qp_cols = {c['name'] for c in insp.get_columns('question_papers')}
+        with db.engine.connect() as conn:
+            if 'archived' not in qp_cols:
+                try:
+                    conn.execute(sa_text('ALTER TABLE question_papers ADD COLUMN archived BOOLEAN NOT NULL DEFAULT 0'))
+                    conn.commit()
+                except Exception:
+                    pass
+            if 'archived_at' not in qp_cols:
+                try:
+                    conn.execute(sa_text('ALTER TABLE question_papers ADD COLUMN archived_at DATETIME'))
                     conn.commit()
                 except Exception:
                     pass

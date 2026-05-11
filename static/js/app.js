@@ -248,14 +248,78 @@ function toggleProfileMenu() {
 }
 
 /* ===== UPGRADE MODAL ===== */
-function openUpgradeModal() {
+function openUpgradeModal(tab) {
   document.getElementById('upgrade-modal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  switchUpgradeTab(tab || 'pricing');
 }
 
 function closeUpgradeModal() {
   document.getElementById('upgrade-modal').style.display = 'none';
   document.body.style.overflow = '';
+}
+
+function handleUpgradeModalOverlayClick(event) {
+  if (event.target === document.getElementById('upgrade-modal')) closeUpgradeModal();
+}
+
+function switchUpgradeTab(tab) {
+  ['pricing', 'contact', 'callback'].forEach(t => {
+    document.getElementById(`utab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`upanel-${t}`).style.display = t === tab ? 'block' : 'none';
+  });
+}
+
+async function submitContactForm(event, type) {
+  event.preventDefault();
+  const isContact = type === 'contact';
+  const errEl = document.getElementById(isContact ? 'contact-form-error' : 'callback-form-error');
+  const succEl = document.getElementById(isContact ? 'contact-form-success' : 'callback-form-success');
+  const btn = document.getElementById(isContact ? 'contact-submit-btn' : 'callback-submit-btn');
+  errEl.style.display = 'none';
+  succEl.style.display = 'none';
+
+  const payload = { request_type: type };
+  if (isContact) {
+    payload.name        = document.getElementById('cf-name').value.trim();
+    payload.school_name = document.getElementById('cf-school').value.trim();
+    payload.email       = document.getElementById('cf-email').value.trim();
+    payload.mobile      = document.getElementById('cf-mobile').value.trim();
+    payload.message     = document.getElementById('cf-message').value.trim();
+  } else {
+    payload.name    = document.getElementById('cb-name').value.trim();
+    payload.email   = document.getElementById('cb-email').value.trim();
+    payload.mobile  = document.getElementById('cb-mobile').value.trim();
+    payload.message = '';
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+    } else {
+      const msg = type === 'callback'
+        ? '✓ Callback request received! Our support team will contact you within 48 hours during business hours (Mon–Sat, 9 AM–6 PM IST).'
+        : '✓ Message sent! We’ll get back to you soon.';
+      succEl.textContent = msg;
+      succEl.style.display = 'block';
+      document.getElementById(isContact ? 'contact-form' : 'callback-form').reset();
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = isContact ? '✉ Send Message' : '☎ Request Callback';
+  }
 }
 
 /* ===== BOARDS ===== */
@@ -1030,10 +1094,13 @@ function resetEvaluation() {
 }
 
 /* ===== HISTORY PANEL ===== */
+let _historyCurrentView = 'active';
+const _historyDetailCache = {};
+
 function openHistoryPanel() {
   document.getElementById('history-panel').classList.add('open');
   document.getElementById('history-overlay').classList.add('open');
-  loadHistory();
+  loadHistory(_historyCurrentView);
 }
 
 function closeHistoryPanel() {
@@ -1041,12 +1108,22 @@ function closeHistoryPanel() {
   document.getElementById('history-overlay').classList.remove('open');
 }
 
-async function loadHistory() {
+function switchHistoryTab(view) {
+  loadHistory(view);
+}
+
+async function loadHistory(view) {
+  if (view) _historyCurrentView = view;
+  const activeTab = document.getElementById('hvtab-active');
+  const archivedTab = document.getElementById('hvtab-archived');
+  if (activeTab) activeTab.classList.toggle('active', _historyCurrentView === 'active');
+  if (archivedTab) archivedTab.classList.toggle('active', _historyCurrentView === 'archived');
+
   const body = document.getElementById('history-panel-body');
   body.innerHTML = '<div class="loading-chapters">Loading history...</div>';
 
   try {
-    const res = await fetch('/api/history');
+    const res = await fetch(`/api/history?view=${_historyCurrentView}`);
     if (res.status === 401) {
       body.innerHTML = '<div class="history-empty"><p>Sign in to view history.</p></div>';
       return;
@@ -1054,11 +1131,13 @@ async function loadHistory() {
     const data = await res.json();
 
     if (!data.papers || data.papers.length === 0) {
+      const emptyMsg = _historyCurrentView === 'archived'
+        ? 'No archived papers.'
+        : 'No question papers yet.<br><small>Generate your first paper to see it here.</small>';
       body.innerHTML = `
         <div class="history-empty">
           <div style="font-size:2.5rem;margin-bottom:0.5rem;">&#128196;</div>
-          <p>No question papers yet.</p>
-          <p style="font-size:0.8rem;color:var(--text-muted);">Generate your first paper to see it here.</p>
+          <p>${emptyMsg}</p>
         </div>`;
       return;
     }
@@ -1080,6 +1159,7 @@ async function loadHistory() {
           ${p.total_marks} marks &bull; ${p.evaluation_count || 0} evaluation${p.evaluation_count !== 1 ? 's' : ''}
         </div>
         ${p.teacher_name ? `<div class="history-teacher">Teacher: ${escapeHtml(p.teacher_name)}</div>` : ''}
+        ${p.archived ? '<div class="history-archived-badge">&#128230; Archived</div>' : ''}
       `;
       item.addEventListener('click', () => loadHistoryDetail(p.id));
       body.appendChild(item);
@@ -1099,27 +1179,34 @@ async function loadHistoryDetail(paperId) {
       body.innerHTML = '<div class="history-empty"><p>Sign in to view history.</p></div>';
       return;
     }
+    // API returns metadata at top level: {id, board, class_num, subject, exam_type,
+    // teacher_name, total_marks, created_at, paper: <questions>, evaluations: [...]}
     const data = await res.json();
-    const p = data.paper;
-    const evals = data.evaluations || [];
+    _historyDetailCache[paperId] = data;
 
-    const date = new Date(p.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const evals = data.evaluations || [];
+    const date = new Date(data.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
     let html = `
       <button class="btn btn-outline btn-sm" onclick="loadHistory()" style="margin-bottom:1rem;">&#8592; Back to History</button>
       <div class="history-detail-header">
-        <div class="history-subject" style="font-size:1.1rem;">${escapeHtml(p.subject)}</div>
+        <div class="history-subject" style="font-size:1.1rem;">${escapeHtml(data.subject || '')}</div>
         <div class="history-item-meta" style="margin-top:0.35rem;">
-          Class ${escapeHtml(String(p.class_num))} &bull; ${escapeHtml(p.board)}<br>
-          ${escapeHtml(p.exam_type)} &bull; ${p.total_marks} marks &bull; ${date}
+          Class ${escapeHtml(String(data.class_num || ''))} &bull; ${escapeHtml(data.board || '')}<br>
+          ${escapeHtml(data.exam_type || '')} &bull; ${data.total_marks} marks &bull; ${date}
         </div>
-        ${p.teacher_name ? `<div class="history-teacher" style="margin-top:0.25rem;">Teacher: ${escapeHtml(p.teacher_name)}</div>` : ''}
+        ${data.teacher_name ? `<div class="history-teacher" style="margin-top:0.25rem;">Teacher: ${escapeHtml(data.teacher_name)}</div>` : ''}
       </div>
     `;
 
-    html += `<button class="btn btn-primary btn-sm" onclick="restorePaper(${JSON.stringify(p.paper_json).replace(/"/g, '&quot;')}, ${p.id})" style="margin-bottom:1rem;width:100%;">
-      &#128196; Load This Paper
-    </button>`;
+    html += `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;">`;
+    if (!data.archived) {
+      html += `<button class="btn btn-primary btn-sm" onclick="loadPaperFromCache(${paperId})" style="flex:1;">&#128196; Load This Paper</button>`;
+      html += `<button class="btn btn-outline btn-sm" onclick="archivePaper(${paperId})" title="Archive" style="padding:0.4rem 0.75rem;">&#128230; Archive</button>`;
+    } else {
+      html += `<button class="btn btn-outline btn-sm" onclick="unarchivePaper(${paperId})" style="flex:1;">&#8635; Unarchive</button>`;
+    }
+    html += `</div>`;
 
     if (evals.length > 0) {
       html += `<div class="history-evals-title">Evaluations (${evals.length})</div>`;
@@ -1134,7 +1221,7 @@ async function loadHistoryDetail(paperId) {
         `;
       });
     } else {
-      html += `<div class="history-empty"><p>No evaluations for this paper yet.</p></div>`;
+      html += `<div class="history-empty" style="padding:1rem 0;"><p>No evaluations for this paper yet.</p></div>`;
     }
 
     body.innerHTML = html;
@@ -1143,9 +1230,31 @@ async function loadHistoryDetail(paperId) {
   }
 }
 
-function restorePaper(paperJsonStr, paperId) {
+function loadPaperFromCache(paperId) {
+  const data = _historyDetailCache[paperId];
+  if (!data || !data.paper) { showToast('Paper data not available.', 'error'); return; }
+  restorePaper(data.paper, paperId);
+}
+
+async function archivePaper(paperId) {
   try {
-    const paper = typeof paperJsonStr === 'string' ? JSON.parse(paperJsonStr) : paperJsonStr;
+    const res = await fetch(`/api/history/${paperId}/archive`, { method: 'POST' });
+    if (res.ok) { showToast('Paper archived.', 'success'); loadHistory('active'); }
+    else { showToast('Failed to archive paper.', 'error'); }
+  } catch (e) { showToast('Error archiving paper.', 'error'); }
+}
+
+async function unarchivePaper(paperId) {
+  try {
+    const res = await fetch(`/api/history/${paperId}/unarchive`, { method: 'POST' });
+    if (res.ok) { showToast('Paper unarchived.', 'success'); loadHistory('archived'); }
+    else { showToast('Failed to unarchive paper.', 'error'); }
+  } catch (e) { showToast('Error unarchiving paper.', 'error'); }
+}
+
+function restorePaper(paperData, paperId) {
+  try {
+    const paper = typeof paperData === 'string' ? JSON.parse(paperData) : paperData;
     state.questionPaper = paper;
     state.paperId = paperId;
     const info = paper.paper_info || {};
