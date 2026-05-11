@@ -1199,24 +1199,30 @@ async function loadHistoryDetail(paperId) {
       </div>
     `;
 
-    html += `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;">`;
+    html += `<div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap;">`;
+    html += `<button class="btn btn-primary btn-sm" onclick="loadPaperFromCache(${paperId})" style="flex:1;">&#128196; Load This Paper</button>`;
     if (!data.archived) {
-      html += `<button class="btn btn-primary btn-sm" onclick="loadPaperFromCache(${paperId})" style="flex:1;">&#128196; Load This Paper</button>`;
       html += `<button class="btn btn-outline btn-sm" onclick="archivePaper(${paperId})" title="Archive" style="padding:0.4rem 0.75rem;">&#128230; Archive</button>`;
     } else {
-      html += `<button class="btn btn-outline btn-sm" onclick="unarchivePaper(${paperId})" style="flex:1;">&#8635; Unarchive</button>`;
+      html += `<button class="btn btn-outline btn-sm" onclick="unarchivePaper(${paperId})" style="padding:0.4rem 0.75rem;">&#8635; Unarchive</button>`;
     }
     html += `</div>`;
 
     if (evals.length > 0) {
       html += `<div class="history-evals-title">Evaluations (${evals.length})</div>`;
-      evals.forEach(ev => {
+      evals.forEach((ev, idx) => {
         const evDate = new Date(ev.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        const hasReport = !!ev.report;
         html += `
           <div class="history-eval-item">
-            <div class="history-eval-student">${escapeHtml(ev.student_name || 'Unknown')}</div>
-            <div class="history-item-meta">Roll: ${escapeHtml(ev.roll_no || 'N/A')} &bull; ${evDate}</div>
-            <div class="history-eval-score">${ev.total_obtained}/${ev.total_marks} &mdash; ${ev.percentage}% &mdash; Grade ${ev.grade}</div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem;">
+              <div>
+                <div class="history-eval-student">${escapeHtml(ev.student_name || 'Unknown')}</div>
+                <div class="history-item-meta">Roll: ${escapeHtml(ev.roll_no || 'N/A')} &bull; ${evDate}</div>
+                <div class="history-eval-score">${ev.total_obtained}/${ev.total_marks} &mdash; ${ev.percentage}% &mdash; Grade ${ev.grade}</div>
+              </div>
+              ${hasReport ? `<button class="btn btn-outline btn-sm" onclick="viewHistoryEval(${paperId}, ${idx})" style="white-space:nowrap;flex-shrink:0;">&#128203; View Report</button>` : ''}
+            </div>
           </div>
         `;
       });
@@ -1234,6 +1240,28 @@ function loadPaperFromCache(paperId) {
   const data = _historyDetailCache[paperId];
   if (!data || !data.paper) { showToast('Paper data not available.', 'error'); return; }
   restorePaper(data.paper, paperId);
+}
+
+function viewHistoryEval(paperId, evalIdx) {
+  const data = _historyDetailCache[paperId];
+  if (!data || !data.paper) { showToast('Paper data not available.', 'error'); return; }
+  const ev = (data.evaluations || [])[evalIdx];
+  if (!ev || !ev.report) { showToast('Evaluation report not available.', 'error'); return; }
+  // Load the paper into state first so report metadata renders correctly
+  const paper = typeof data.paper === 'string' ? JSON.parse(data.paper) : data.paper;
+  state.questionPaper = paper;
+  state.paperId = paperId;
+  const info = paper.paper_info || {};
+  state.board = info.board || state.board;
+  state.classNum = String(info.class || state.classNum);
+  state.subject = info.subject || state.subject;
+  state.examType = info.exam_type || state.examType;
+  state.totalMarks = info.total_marks || state.totalMarks;
+  const report = typeof ev.report === 'string' ? JSON.parse(ev.report) : ev.report;
+  closeHistoryPanel();
+  gotoStep(5);
+  renderEvaluationReport(report);
+  showToast('Evaluation report loaded!', 'success');
 }
 
 async function archivePaper(paperId) {
