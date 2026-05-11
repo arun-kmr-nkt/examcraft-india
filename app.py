@@ -76,44 +76,63 @@ else:
     google_oauth = None
 
 CONTACT_EMAIL = 'arun.kmr06@gmail.com'
-SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
-SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USER = os.environ.get('SMTP_USER', '')
-SMTP_PASS = os.environ.get('SMTP_PASS', '')
+
+
+def _get_smtp_config():
+    """Read SMTP config fresh from env each call so Render restarts pick up new values."""
+    return {
+        'host': os.environ.get('SMTP_HOST', 'smtp.gmail.com'),
+        'port': int(os.environ.get('SMTP_PORT', '587')),
+        'user': os.environ.get('SMTP_USER', '').strip(),
+        # Gmail App Passwords are shown with spaces (e.g. "abcd efgh ijkl mnop") — strip them
+        'password': os.environ.get('SMTP_PASS', '').replace(' ', '').strip(),
+    }
 
 
 def send_contact_email(name, email, mobile, school_name, message, request_type):
-    if not SMTP_USER or not SMTP_PASS:
-        return False
+    cfg = _get_smtp_config()
+    if not cfg['user'] or not cfg['password']:
+        print('[EMAIL] SMTP_USER or SMTP_PASS not configured — skipping email.')
+        return False, 'SMTP credentials not configured'
     try:
         msg = MIMEMultipart('alternative')
         msg['Subject'] = f'ExamCraft India - {"Callback Request" if request_type == "callback" else "Contact Request"} from {name}'
-        msg['From'] = SMTP_USER
-        msg['To'] = CONTACT_EMAIL
+        msg['From']     = cfg['user']
+        msg['To']       = CONTACT_EMAIL
         msg['Reply-To'] = email
-        body = f"""ExamCraft India - New {request_type.title()} Request
-
-Name: {name}
-Email: {email}
-Mobile: {mobile or 'Not provided'}
-School: {school_name or 'Not provided'}
-Type: {request_type.title()}
-
-Message:
-{message or 'No message provided'}
-
----
-Received at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}
-"""
+        body = (
+            f"ExamCraft India — New {request_type.title()} Request\n\n"
+            f"Name:    {name}\n"
+            f"Email:   {email}\n"
+            f"Mobile:  {mobile or 'Not provided'}\n"
+            f"School:  {school_name or 'Not provided'}\n"
+            f"Type:    {request_type.title()}\n\n"
+            f"Message:\n{message or 'No message provided'}\n\n"
+            f"---\nReceived at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+        )
         msg.attach(MIMEText(body, 'plain'))
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+
+        print(f'[EMAIL] Connecting to {cfg["host"]}:{cfg["port"]} as {cfg["user"]}')
+        with smtplib.SMTP(cfg['host'], cfg['port'], timeout=15) as server:
+            server.ehlo()
             server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(SMTP_USER, CONTACT_EMAIL, msg.as_string())
-        return True
+            server.ehlo()
+            server.login(cfg['user'], cfg['password'])
+            server.sendmail(cfg['user'], CONTACT_EMAIL, msg.as_string())
+        print(f'[EMAIL] Sent successfully to {CONTACT_EMAIL}')
+        return True, None
+    except smtplib.SMTPAuthenticationError:
+        err = 'SMTP authentication failed — check SMTP_USER and SMTP_PASS (use a Gmail App Password, not your regular password)'
+        print(f'[EMAIL ERROR] {err}')
+        return False, err
+    except smtplib.SMTPException as e:
+        err = f'SMTP error: {e}'
+        print(f'[EMAIL ERROR] {err}')
+        return False, err
     except Exception as e:
-        print(f'Email send error: {e}')
-        return False
+        err = f'Unexpected email error: {e}'
+        print(f'[EMAIL ERROR] {err}')
+        return False, err
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1312,6 +1331,27 @@ def unarchive_paper(paper_id):
     return jsonify({'success': True})
 
 
+@app.route('/api/admin/test-email')
+def test_email():
+    """Quick diagnostic: hit this URL while logged in to test SMTP config."""
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    cfg = _get_smtp_config()
+    ok, err = send_contact_email(
+        name='Test', email=current_user.email,
+        mobile='', school_name='', message='This is a test email from ExamCraft India.',
+        request_type='contact',
+    )
+    return jsonify({
+        'smtp_user_set': bool(cfg['user']),
+        'smtp_pass_set': bool(cfg['password']),
+        'smtp_host': cfg['host'],
+        'smtp_port': cfg['port'],
+        'sent': ok,
+        'error': err,
+    })
+
+
 @app.route('/api/contact', methods=['POST'])
 def submit_contact():
     data = request.get_json(silent=True) or {}
@@ -1337,8 +1377,8 @@ def submit_contact():
     db.session.add(req)
     db.session.commit()
 
-    email_sent = send_contact_email(name, email, mobile, school_name, message, request_type)
-    return jsonify({'success': True, 'email_sent': email_sent})
+    email_sent, email_error = send_contact_email(name, email, mobile, school_name, message, request_type)
+    return jsonify({'success': True, 'email_sent': email_sent, 'email_error': email_error})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
