@@ -14,13 +14,50 @@ const state = {
   questionTypes: {},
   questionPaper: null,
   paperId: null,
-  answerSheetFile: null
+  answerSheetFile: null,
+  currentUser: null,
 };
 
 /* ===== INIT ===== */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Auth gate — check login state first, then decide what to show
+  let user = null;
+  try {
+    const res = await fetch('/api/user');
+    user = await res.json();
+  } catch (e) {
+    user = { logged_in: false };
+  }
+
+  if (!user.logged_in) {
+    // Show landing page, hide app
+    document.getElementById('landing-page').style.display = 'block';
+    document.getElementById('app-content').style.display = 'none';
+    document.getElementById('site-header').style.display = 'block';
+    // Keep login button visible, hide app-specific header items
+    document.getElementById('history-btn').style.display = 'none';
+    document.getElementById('usage-badge').style.display = 'none';
+    document.getElementById('upgrade-btn').style.display = 'none';
+
+    // Check if OAuth is configured (if login button leads to 503 we show warning)
+    checkOAuthConfigured();
+    return; // stop app init
+  }
+
+  // Logged in — show app, hide landing
+  document.getElementById('landing-page').style.display = 'none';
+  document.getElementById('app-content').style.display = 'block';
+  document.getElementById('history-btn').style.display = 'inline-flex';
+
+  state.currentUser = user;
+
+  // Update auth area header
+  updateAuthHeader(user);
+  // Update usage badge
+  updateUsageBadge(user);
+
+  // Init app
   loadBoards();
-  checkLoginState();
   updateMarksTotal();
 
   document.getElementById('class_num').addEventListener('change', onClassChange);
@@ -30,34 +67,91 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', (e) => {
     const menu = document.getElementById('profile-menu');
     const chip = document.getElementById('profile-chip');
-    if (menu && !menu.contains(e.target) && !chip.contains(e.target)) {
+    if (menu && chip && !menu.contains(e.target) && !chip.contains(e.target)) {
       menu.style.display = 'none';
     }
   });
 });
 
-/* ===== AUTH / LOGIN STATE ===== */
+/* ===== OAUTH CONFIG CHECK ===== */
+async function checkOAuthConfigured() {
+  try {
+    const res = await fetch('/api/user');
+    // If the response is OK, OAuth might be configured even if not logged in
+    // We check by seeing if login btn href is usable — just show it normally
+    // If the server returns 503 on /auth/login, we show the warning
+    const testRes = await fetch('/auth/login', { method: 'HEAD', redirect: 'manual' });
+    if (testRes.status === 503) {
+      document.getElementById('hero-login-btn').style.display = 'none';
+      document.getElementById('oauth-not-configured').style.display = 'block';
+      document.getElementById('login-btn').style.display = 'none';
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+/* ===== AUTH HEADER ===== */
+function updateAuthHeader(data) {
+  const loginBtn = document.getElementById('login-btn');
+  const profileChip = document.getElementById('profile-chip');
+
+  if (data.logged_in) {
+    loginBtn.style.display = 'none';
+    profileChip.style.display = 'flex';
+    document.getElementById('profile-name').textContent = data.name || data.email;
+    document.getElementById('profile-email').textContent = data.email || '';
+    if (data.picture) {
+      document.getElementById('profile-pic').src = data.picture;
+    } else {
+      document.getElementById('profile-pic').style.display = 'none';
+    }
+  } else {
+    loginBtn.style.display = 'flex';
+    profileChip.style.display = 'none';
+  }
+}
+
+/* ===== USAGE BADGE ===== */
+function updateUsageBadge(user) {
+  const badge = document.getElementById('usage-badge');
+  const upgradeBtn = document.getElementById('upgrade-btn');
+  if (!badge) return;
+
+  const plan = user.plan || 'free';
+  const usage = user.usage || { papers: 0, evals: 0 };
+  const planInfo = user.plan_info || { papers_per_month: 3, evals_per_month: 5 };
+
+  if (plan === 'free') {
+    const paperLimit = planInfo.papers_per_month || 3;
+    const papersUsed = usage.papers || 0;
+    const pct = paperLimit > 0 ? (papersUsed / paperLimit) * 100 : 0;
+
+    let colorClass = 'badge-green';
+    if (pct >= 100) colorClass = 'badge-red';
+    else if (pct >= 80) colorClass = 'badge-orange';
+
+    badge.textContent = `${papersUsed}/${paperLimit} papers`;
+    badge.className = `usage-badge ${colorClass}`;
+    badge.style.display = 'inline-flex';
+
+    if (upgradeBtn) upgradeBtn.style.display = 'inline-flex';
+  } else {
+    const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+    badge.textContent = `${planLabel} ✓`;
+    badge.className = 'usage-badge badge-pro';
+    badge.style.display = 'inline-flex';
+    if (upgradeBtn) upgradeBtn.style.display = 'none';
+  }
+}
+
+/* ===== AUTH / LOGIN STATE (kept for compatibility) ===== */
 async function checkLoginState() {
   try {
     const res = await fetch('/api/user');
     const data = await res.json();
-    const loginBtn = document.getElementById('login-btn');
-    const profileChip = document.getElementById('profile-chip');
-
-    if (data.logged_in) {
-      loginBtn.style.display = 'none';
-      profileChip.style.display = 'flex';
-      document.getElementById('profile-name').textContent = data.name || data.email;
-      document.getElementById('profile-email').textContent = data.email || '';
-      if (data.picture) {
-        document.getElementById('profile-pic').src = data.picture;
-      } else {
-        document.getElementById('profile-pic').style.display = 'none';
-      }
-    } else {
-      loginBtn.style.display = 'flex';
-      profileChip.style.display = 'none';
-    }
+    updateAuthHeader(data);
+    if (data.logged_in) updateUsageBadge(data);
   } catch (e) {
     // Auth optional — fail silently
   }
@@ -66,6 +160,17 @@ async function checkLoginState() {
 function toggleProfileMenu() {
   const menu = document.getElementById('profile-menu');
   menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+}
+
+/* ===== UPGRADE MODAL ===== */
+function openUpgradeModal() {
+  document.getElementById('upgrade-modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeUpgradeModal() {
+  document.getElementById('upgrade-modal').style.display = 'none';
+  document.body.style.overflow = '';
 }
 
 /* ===== BOARDS ===== */
@@ -452,6 +557,21 @@ function collectQuestionTypes() {
   return result;
 }
 
+/* ===== FORMAT FORMULA (superscript / subscript) ===== */
+function formatFormula(rawText) {
+  // 1. HTML-escape
+  const e = String(rawText)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  // 2. Apply sup/sub
+  return e
+    .replace(/\^\{([^}]{1,30})\}/g, '<sup>$1</sup>')
+    .replace(/_\{([^}]{1,30})\}/g,  '<sub>$1</sub>')
+    .replace(/\^(\d+)/g,            '<sup>$1</sup>')
+    .replace(/\^([a-zA-Z])\b/g,     '<sup>$1</sup>')
+    .replace(/_(\d+)/g,             '<sub>$1</sub>');
+}
+
 /* ===== GENERATE PAPER ===== */
 async function generatePaper() {
   const qt = collectQuestionTypes();
@@ -481,6 +601,15 @@ async function generatePaper() {
     const res = await fetch('/api/generate-paper', { method: 'POST', body: formData });
     const data = await res.json();
 
+    if (res.status === 401 || data.error === 'auth_required') {
+      showToast('Please sign in to continue.', 'error');
+      return;
+    }
+    if (res.status === 403 || data.error === 'limit_reached') {
+      showToast(`Paper limit reached (${data.limit || 3}/month on Free plan). Upgrade to generate more!`, 'error');
+      openUpgradeModal();
+      return;
+    }
     if (!res.ok || data.error) {
       showToast(data.error || 'Failed to generate paper.', 'error');
       return;
@@ -491,6 +620,13 @@ async function generatePaper() {
     renderQuestionPaper(data.paper);
     gotoStep(4);
     showToast('Question paper generated successfully!', 'success');
+
+    // Refresh usage badge
+    try {
+      const ur = await fetch('/api/user');
+      const ud = await ur.json();
+      if (ud.logged_in) updateUsageBadge(ud);
+    } catch (e) { /* ignore */ }
   } catch (e) {
     showToast('Network error. Please check your connection.', 'error');
   } finally {
@@ -561,44 +697,44 @@ function renderQuestionPaper(paper) {
       let qBody = `<div class="qp-q-text">`;
 
       if (type === 'mcq' || type === 'assertion_reason') {
-        qBody += escapeHtml(q.text || '');
+        qBody += formatFormula(q.text || '');
         if (q.options && q.options.length > 0) {
           qBody += `<div class="qp-options">`;
-          q.options.forEach(opt => { qBody += `<div class="qp-option">${escapeHtml(opt)}</div>`; });
+          q.options.forEach(opt => { qBody += `<div class="qp-option">${formatFormula(opt)}</div>`; });
           qBody += `</div>`;
         }
       } else if (type === 'fill_blank') {
-        const text = (q.text || '').replace(/_+/g, '<span class="qp-blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
+        const text = formatFormula(q.text || '').replace(/_+/g, '<span class="qp-blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
         qBody += text;
       } else if (type === 'match') {
-        qBody += escapeHtml(q.text || '');
+        qBody += formatFormula(q.text || '');
         if (q.column_a && q.column_b) {
           qBody += `<div class="qp-match-table">`;
           const len = Math.max(q.column_a.length, q.column_b.length);
           for (let i = 0; i < len; i++) {
             qBody += `<div class="qp-match-row">
-              <span class="qp-match-col-a">${i + 1}. ${escapeHtml(q.column_a[i] || '')}</span>
-              <span>${String.fromCharCode(97 + i)}) ${escapeHtml(q.column_b[i] || '')}</span>
+              <span class="qp-match-col-a">${i + 1}. ${formatFormula(q.column_a[i] || '')}</span>
+              <span>${String.fromCharCode(97 + i)}) ${formatFormula(q.column_b[i] || '')}</span>
             </div>`;
           }
           qBody += `</div>`;
         }
       } else if (type === 'true_false') {
-        qBody += escapeHtml(q.text || '') + ' &nbsp; <strong>[True / False]</strong>';
+        qBody += formatFormula(q.text || '') + ' &nbsp; <strong>[True / False]</strong>';
       } else if (type === 'map_work') {
-        qBody += escapeHtml(q.text || '') + '<div class="qp-map-hint">[Refer to outline map provided]</div>';
+        qBody += formatFormula(q.text || '') + '<div class="qp-map-hint">[Refer to outline map provided]</div>';
       } else if (type === 'reading_passage' || type === 'reading_poem') {
-        qBody += escapeHtml(q.text || '');
+        qBody += formatFormula(q.text || '');
         if (q.passage) {
           qBody += `<div class="qp-passage">${escapeHtml(q.passage)}</div>`;
         }
         if (q.sub_questions && q.sub_questions.length > 0) {
           qBody += '<ol class="qp-subq">';
-          q.sub_questions.forEach(sq => { qBody += `<li>${escapeHtml(sq)}</li>`; });
+          q.sub_questions.forEach(sq => { qBody += `<li>${formatFormula(sq)}</li>`; });
           qBody += '</ol>';
         }
       } else {
-        qBody += escapeHtml(q.text || '');
+        qBody += formatFormula(q.text || '');
       }
 
       qBody += `</div>`;
@@ -665,6 +801,15 @@ async function evaluateAnswerSheet() {
     const res = await fetch('/api/evaluate', { method: 'POST', body: formData });
     const data = await res.json();
 
+    if (res.status === 401 || data.error === 'auth_required') {
+      showToast('Please sign in to continue.', 'error');
+      return;
+    }
+    if (res.status === 403 || data.error === 'limit_reached') {
+      showToast(`Evaluation limit reached (${data.limit || 5}/month on Free plan). Upgrade to evaluate more!`, 'error');
+      openUpgradeModal();
+      return;
+    }
     if (!res.ok || data.error) {
       showToast(data.error || 'Evaluation failed.', 'error');
       return;
@@ -672,6 +817,13 @@ async function evaluateAnswerSheet() {
 
     renderEvaluationReport(data.report);
     showToast('Evaluation complete!', 'success');
+
+    // Refresh usage badge
+    try {
+      const ur = await fetch('/api/user');
+      const ud = await ur.json();
+      if (ud.logged_in) updateUsageBadge(ud);
+    } catch (e) { /* ignore */ }
   } catch (e) {
     showToast('Network error during evaluation.', 'error');
   } finally {
@@ -810,6 +962,10 @@ async function loadHistory() {
 
   try {
     const res = await fetch('/api/history');
+    if (res.status === 401) {
+      body.innerHTML = '<div class="history-empty"><p>Sign in to view history.</p></div>';
+      return;
+    }
     const data = await res.json();
 
     if (!data.papers || data.papers.length === 0) {
@@ -854,6 +1010,10 @@ async function loadHistoryDetail(paperId) {
 
   try {
     const res = await fetch(`/api/history/${paperId}`);
+    if (res.status === 401) {
+      body.innerHTML = '<div class="history-empty"><p>Sign in to view history.</p></div>';
+      return;
+    }
     const data = await res.json();
     const p = data.paper;
     const evals = data.evaluations || [];

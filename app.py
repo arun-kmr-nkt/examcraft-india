@@ -123,9 +123,54 @@ class Evaluation(db.Model):
     created_at     = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class UserSubscription(db.Model):
+    __tablename__ = 'user_subscriptions'
+    id              = db.Column(db.Integer, primary_key=True)
+    user_id         = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    plan            = db.Column(db.String(20), default='free')   # free / pro / school
+    status          = db.Column(db.String(20), default='active') # active / cancelled
+    stripe_sub_id   = db.Column(db.String(200))
+    razorpay_sub_id = db.Column(db.String(200))
+    period_end      = db.Column(db.DateTime)
+    created_at      = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PLANS & SUBSCRIPTION HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PLANS = {
+    'free':   {'name': 'Free',   'price_monthly': 0,    'papers_per_month': 3,  'evals_per_month': 5,  'features': ['3 papers / month', '5 evaluations / month', 'All boards & subjects', 'PDF & Word download']},
+    'pro':    {'name': 'Pro',    'price_monthly': 299,  'papers_per_month': -1, 'evals_per_month': -1, 'features': ['Unlimited papers', 'Unlimited evaluations', 'Word download', 'Priority support', 'Everything in Free']},
+    'school': {'name': 'School', 'price_monthly': 2999, 'papers_per_month': -1, 'evals_per_month': -1, 'features': ['Everything in Pro', 'Up to 10 teacher accounts', 'School branding', 'Dedicated support']},
+}
+
+
+def get_user_plan(user_id):
+    sub = UserSubscription.query.filter_by(user_id=user_id).first()
+    plan_key = sub.plan if sub else 'free'
+    return plan_key, PLANS.get(plan_key, PLANS['free'])
+
+
+def get_user_usage(user_id):
+    from sqlalchemy import extract
+    now = datetime.now(timezone.utc)
+    papers = QuestionPaper.query.filter(
+        QuestionPaper.user_id == user_id,
+        extract('year',  QuestionPaper.created_at) == now.year,
+        extract('month', QuestionPaper.created_at) == now.month,
+    ).count()
+    evals = Evaluation.query.filter(
+        Evaluation.user_id == user_id,
+        extract('year',  Evaluation.created_at) == now.year,
+        extract('month', Evaluation.created_at) == now.month,
+    ).count()
+    return {'papers': papers, 'evals': evals}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -947,13 +992,32 @@ def auth_logout():
 @app.route('/api/user')
 def api_user():
     if current_user.is_authenticated:
+        plan_key, plan_info = get_user_plan(current_user.id)
+        usage = get_user_usage(current_user.id)
         return jsonify({
             'logged_in': True,
             'name':      current_user.name,
             'email':     current_user.email,
             'picture':   current_user.picture,
+            'plan':      plan_key,
+            'plan_info': plan_info,
+            'usage':     usage,
         })
     return jsonify({'logged_in': False})
+
+
+@app.route('/api/plans')
+def api_plans():
+    return jsonify({'plans': PLANS})
+
+
+@app.route('/api/usage')
+def api_usage():
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    plan_key, plan_info = get_user_plan(current_user.id)
+    usage = get_user_usage(current_user.id)
+    return jsonify({'plan': plan_key, 'plan_info': plan_info, 'usage': usage})
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1012,11 +1076,9 @@ def get_question_types():
 
 @app.route('/api/history', methods=['GET'])
 def get_history():
-    sid = get_session_id()
-    if current_user.is_authenticated:
-        papers = QuestionPaper.query.filter_by(user_id=current_user.id).order_by(QuestionPaper.created_at.desc()).all()
-    else:
-        papers = QuestionPaper.query.filter_by(session_id=sid).order_by(QuestionPaper.created_at.desc()).all()
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+    papers = QuestionPaper.query.filter_by(user_id=current_user.id).order_by(QuestionPaper.created_at.desc()).all()
 
     result = []
     for p in papers:
@@ -1036,18 +1098,15 @@ def get_history():
 
 @app.route('/api/history/<int:paper_id>', methods=['GET'])
 def get_history_paper(paper_id):
-    sid   = get_session_id()
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
     paper = db.session.get(QuestionPaper, paper_id)
     if not paper:
         return jsonify({'error': 'Paper not found'}), 404
 
-    # Access control: owner or same session
-    if current_user.is_authenticated:
-        if paper.user_id and paper.user_id != current_user.id:
-            return jsonify({'error': 'Forbidden'}), 403
-    else:
-        if paper.session_id != sid:
-            return jsonify({'error': 'Forbidden'}), 403
+    # Access control: only owner can view
+    if paper.user_id and paper.user_id != current_user.id:
+        return jsonify({'error': 'Forbidden'}), 403
 
     try:
         paper_data = json.loads(paper.paper_json) if paper.paper_json else {}
@@ -1092,6 +1151,17 @@ def get_history_paper(paper_id):
 
 @app.route('/api/generate-paper', methods=['POST'])
 def generate_paper():
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+
+    # Check paper limit for free plan
+    plan_key, plan_info = get_user_plan(current_user.id)
+    limit = plan_info.get('papers_per_month', 3)
+    if limit != -1:
+        usage = get_user_usage(current_user.id)
+        if usage['papers'] >= limit:
+            return jsonify({'error': 'limit_reached', 'plan': plan_key, 'limit': limit}), 403
+
     gemini = get_gemini_client()
     if not gemini:
         return jsonify({'error': 'GOOGLE_API_KEY not configured. Get a free key at aistudio.google.com, then run: $env:GOOGLE_API_KEY="your_key"'}), 500
@@ -1175,6 +1245,7 @@ INSTRUCTIONS FOR GENERATION:
 6. For Diagram questions: specify what to draw/label with clear instructions
 7. Include proper general instructions at the top
 8. Add complete answer key at the end
+9. Use ^{{text}} for superscripts (e.g., x^{{2}}, CO_2^{{-}}) and _{{text}} for subscripts (e.g., H_{{2}}O, CO_{{2}}). Use these for all chemical formulas and math expressions.
 
 {"Reference the uploaded chapter content/images for question creation." if pil_images else ""}
 
@@ -1277,6 +1348,17 @@ Generate all questions as specified. Make them appropriate for Class {class_num}
 
 @app.route('/api/evaluate', methods=['POST'])
 def evaluate():
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+
+    # Check eval limit for free plan
+    plan_key, plan_info = get_user_plan(current_user.id)
+    eval_limit = plan_info.get('evals_per_month', 5)
+    if eval_limit != -1:
+        usage = get_user_usage(current_user.id)
+        if usage['evals'] >= eval_limit:
+            return jsonify({'error': 'limit_reached', 'plan': plan_key, 'limit': eval_limit}), 403
+
     gemini = get_gemini_client()
     if not gemini:
         return jsonify({'error': 'GOOGLE_API_KEY not configured. Get a free key at aistudio.google.com'}), 500
@@ -1480,6 +1562,37 @@ def download_word():
                 run.font.color.rgb = RGBColor(*color)
             return p
 
+        def add_formula_runs(paragraph, text, font_size=11, bold=False, color=None):
+            """Split text on ^{...} and _{...} patterns and add runs with sup/sub formatting."""
+            import re as _re
+            parts = _re.split(r'(\^{[^}]{1,30}}|_{[^}]{1,30}}|\^\d+|\^[a-zA-Z]\b|_\d+)', text)
+            for part in parts:
+                if not part:
+                    continue
+                run = paragraph.add_run(part)
+                run.font.size = Pt(font_size)
+                if bold:
+                    run.bold = bold
+                if color:
+                    run.font.color.rgb = RGBColor(*color)
+                sup_match = _re.match(r'^\^{([^}]{1,30})}$', part)
+                sub_match = _re.match(r'^_{([^}]{1,30})}$', part)
+                plain_sup = _re.match(r'^\^(\d+|[a-zA-Z])$', part)
+                plain_sub = _re.match(r'^_(\d+)$', part)
+                if sup_match or plain_sup:
+                    run.font.superscript = True
+                    # replace the raw notation with just the content
+                    if sup_match:
+                        run.text = sup_match.group(1)
+                    elif plain_sup:
+                        run.text = plain_sup.group(1)
+                elif sub_match or plain_sub:
+                    run.font.subscript = True
+                    if sub_match:
+                        run.text = sub_match.group(1)
+                    elif plain_sub:
+                        run.text = plain_sub.group(1)
+
         def add_horizontal_rule(doc):
             p = doc.add_paragraph()
             p.paragraph_format.space_before = Pt(2)
@@ -1578,9 +1691,8 @@ def download_word():
                 r_num.font.size = Pt(11)
                 r_num.font.color.rgb = RGBColor(102, 126, 234)
 
-                # Question text
-                r_text = p.add_run(q.get('text', ''))
-                r_text.font.size = Pt(11)
+                # Question text (with formula runs for sup/sub)
+                add_formula_runs(p, q.get('text', ''), font_size=11)
 
                 # Marks
                 tab_run = p.add_run(f"  {marks_str}")
@@ -1594,8 +1706,9 @@ def download_word():
                         op = doc.add_paragraph()
                         op.paragraph_format.left_indent = Inches(0.4)
                         op.paragraph_format.space_after = Pt(1)
-                        r = op.add_run(f"({label}) {opt}")
-                        r.font.size = Pt(10)
+                        r_lbl = op.add_run(f"({label}) ")
+                        r_lbl.font.size = Pt(10)
+                        add_formula_runs(op, str(opt), font_size=10)
 
                 elif q_type == 'fill_blank':
                     pass  # blanks already in text as ___

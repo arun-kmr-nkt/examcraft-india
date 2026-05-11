@@ -11,7 +11,7 @@
 <body>
 
 <!-- ===== HEADER ===== -->
-<header class="site-header">
+<header class="site-header" id="site-header">
   <div class="header-inner">
     <div class="logo">
       <span class="logo-icon">&#9997;</span>
@@ -22,7 +22,13 @@
     </div>
     <div class="header-actions">
       <div class="header-badge">NCERT Aligned &bull; Classes 1&ndash;12</div>
-      <button class="btn-history" onclick="openHistoryPanel()" title="View History">
+      <!-- Usage badge (shown to logged-in users) -->
+      <span id="usage-badge" class="usage-badge" style="display:none"></span>
+      <!-- Upgrade button (shown to free plan users) -->
+      <button id="upgrade-btn" class="btn-upgrade" style="display:none" onclick="openUpgradeModal()">
+        &#9650; Upgrade
+      </button>
+      <button class="btn-history" id="history-btn" onclick="openHistoryPanel()" title="View History" style="display:none">
         &#128196; History
       </button>
       <!-- Login / Profile area (managed by JS) -->
@@ -45,325 +51,511 @@
   </div>
 </header>
 
-<!-- ===== STEP INDICATOR ===== -->
-<div class="step-wrapper">
-  <div class="step-bar">
-    <div class="step active" id="step-dot-1" onclick="gotoStep(1)">
-      <div class="step-circle">1</div>
-      <div class="step-label">Exam Setup</div>
+<!-- ===== LANDING PAGE (shown to guests) ===== -->
+<div id="landing-page" style="display:none">
+
+  <!-- HERO -->
+  <section class="lp-hero">
+    <div class="lp-hero-inner">
+      <div class="lp-hero-logo">
+        <span class="lp-hero-icon">&#9997;</span>
+        <span class="lp-hero-brand">ExamCraft India</span>
+      </div>
+      <h1 class="lp-hero-title">Create NCERT-Aligned Question Papers in Seconds</h1>
+      <p class="lp-hero-sub">AI-powered exam creation for every board, every class, every subject</p>
+      <div id="hero-cta-area">
+        <a href="/auth/login" class="btn-hero-login" id="hero-login-btn">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="margin-right:0.5rem;vertical-align:middle;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+          Sign in with Google — It's Free
+        </a>
+        <div id="oauth-not-configured" style="display:none" class="lp-oauth-warn">
+          Google Sign-in is not configured on this server.<br>
+          <small>Set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to enable login.</small>
+        </div>
+      </div>
+      <p class="lp-hero-note">Free to start &middot; No credit card required</p>
     </div>
-    <div class="step-line"></div>
-    <div class="step" id="step-dot-2" onclick="gotoStep(2)">
-      <div class="step-circle">2</div>
-      <div class="step-label">Chapters</div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="lp-features">
+    <div class="lp-section-inner">
+      <h2 class="lp-section-heading">Everything you need to run great exams</h2>
+      <div class="lp-features-grid">
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">&#9889;</div>
+          <h3>AI-Powered Questions</h3>
+          <p>Gemini AI generates curriculum-aligned questions in seconds, covering all cognitive levels.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">&#127758;</div>
+          <h3>All 37+ Boards</h3>
+          <p>CBSE, ICSE, and all state boards — Maharashtra, Tamil Nadu, UP, Gujarat, and more.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">&#128218;</div>
+          <h3>18+ Subjects</h3>
+          <p>Maths, Science, Physics, Chemistry, Biology, History, Geography, Languages, and more.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">&#128203;</div>
+          <h3>Instant Evaluation</h3>
+          <p>Upload any answer sheet (image, PDF, DOCX) and get a detailed marks report instantly.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">&#128196;</div>
+          <h3>Full History</h3>
+          <p>All your question papers and evaluations are saved and can be reloaded any time.</p>
+        </div>
+        <div class="lp-feature-card">
+          <div class="lp-feature-icon">&#8322;</div>
+          <h3>Formulas &amp; Subscripts</h3>
+          <p>H&#8322;O, CO&#8322;, x&#178; — superscripts and subscripts render correctly in screen and Word export.</p>
+        </div>
+      </div>
     </div>
-    <div class="step-line"></div>
-    <div class="step" id="step-dot-3" onclick="gotoStep(3)">
-      <div class="step-circle">3</div>
-      <div class="step-label">Question Types</div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="lp-pricing" id="pricing">
+    <div class="lp-section-inner">
+      <h2 class="lp-section-heading">Simple, transparent pricing</h2>
+      <p class="lp-section-sub">Start free. Upgrade when you're ready.</p>
+      <div class="lp-pricing-grid">
+
+        <div class="pricing-card">
+          <div class="pricing-plan-name">Free</div>
+          <div class="pricing-price">&#8377;0<span class="pricing-period">/month</span></div>
+          <ul class="pricing-features">
+            <li>&#10003; 3 papers / month</li>
+            <li>&#10003; 5 evaluations / month</li>
+            <li>&#10003; All boards &amp; subjects</li>
+            <li>&#10003; PDF &amp; Word download</li>
+          </ul>
+          <a href="/auth/login" class="pricing-cta-btn">Get Started Free</a>
+        </div>
+
+        <div class="pricing-card popular">
+          <div class="pricing-popular-badge">Most Popular</div>
+          <div class="pricing-plan-name">Pro</div>
+          <div class="pricing-price">&#8377;299<span class="pricing-period">/month</span></div>
+          <ul class="pricing-features">
+            <li>&#10003; Unlimited papers</li>
+            <li>&#10003; Unlimited evaluations</li>
+            <li>&#10003; Word download</li>
+            <li>&#10003; Priority support</li>
+            <li>&#10003; Everything in Free</li>
+          </ul>
+          <a href="/auth/login" class="pricing-cta-btn pricing-cta-popular">Upgrade to Pro</a>
+        </div>
+
+        <div class="pricing-card">
+          <div class="pricing-plan-name">School</div>
+          <div class="pricing-price">&#8377;2,999<span class="pricing-period">/month</span></div>
+          <ul class="pricing-features">
+            <li>&#10003; Everything in Pro</li>
+            <li>&#10003; Up to 10 teacher accounts</li>
+            <li>&#10003; School branding</li>
+            <li>&#10003; Dedicated support</li>
+          </ul>
+          <a href="mailto:hello@examcraftindia.com" class="pricing-cta-btn">Contact Us</a>
+        </div>
+
+      </div>
     </div>
-    <div class="step-line"></div>
-    <div class="step" id="step-dot-4" onclick="gotoStep(4)">
-      <div class="step-circle">4</div>
-      <div class="step-label">Question Paper</div>
-    </div>
-    <div class="step-line"></div>
-    <div class="step" id="step-dot-5" onclick="gotoStep(5)">
-      <div class="step-circle">5</div>
-      <div class="step-label">Evaluate</div>
+  </section>
+
+  <!-- FOOTER inside landing -->
+  <footer class="site-footer">
+    <div>ExamCraft India &copy; 2025 &mdash; NCERT Aligned Question Paper Generator &amp; Evaluator</div>
+    <div>Powered by Google Gemini AI &bull; All Boards &bull; Classes 1&ndash;12</div>
+  </footer>
+
+</div><!-- /#landing-page -->
+
+
+<!-- ===== APP CONTENT (shown to logged-in users) ===== -->
+<div id="app-content" style="display:none">
+
+  <!-- STEP INDICATOR -->
+  <div class="step-wrapper">
+    <div class="step-bar">
+      <div class="step active" id="step-dot-1" onclick="gotoStep(1)">
+        <div class="step-circle">1</div>
+        <div class="step-label">Exam Setup</div>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-2" onclick="gotoStep(2)">
+        <div class="step-circle">2</div>
+        <div class="step-label">Chapters</div>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-3" onclick="gotoStep(3)">
+        <div class="step-circle">3</div>
+        <div class="step-label">Question Types</div>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-4" onclick="gotoStep(4)">
+        <div class="step-circle">4</div>
+        <div class="step-label">Question Paper</div>
+      </div>
+      <div class="step-line"></div>
+      <div class="step" id="step-dot-5" onclick="gotoStep(5)">
+        <div class="step-circle">5</div>
+        <div class="step-label">Evaluate</div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ===== MAIN CONTENT ===== -->
-<main class="main-content">
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
 
-  <!-- STEP 1: EXAM SETUP -->
-  <section class="step-section active" id="section-1">
-    <div class="card">
-      <div class="card-header">
-        <h2>&#9881; Exam Configuration</h2>
-        <p>Set up the basic details of your question paper</p>
-      </div>
-      <div class="card-body">
-        <div class="form-grid">
-          <div class="form-group">
-            <label for="board">Board / Curriculum</label>
-            <select id="board" required>
-              <option value="">Select Board...</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="class_num">Class</label>
-            <select id="class_num" required>
-              <option value="">Select Class...</option>
-              <option value="1">Class I</option>
-              <option value="2">Class II</option>
-              <option value="3">Class III</option>
-              <option value="4">Class IV</option>
-              <option value="5">Class V</option>
-              <option value="6">Class VI</option>
-              <option value="7">Class VII</option>
-              <option value="8">Class VIII</option>
-              <option value="9">Class IX</option>
-              <option value="10">Class X</option>
-              <option value="11">Class XI</option>
-              <option value="12">Class XII</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="subject">Subject</label>
-            <select id="subject" required disabled>
-              <option value="">Select Class first...</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="exam_type">Exam Type</label>
-            <select id="exam_type" required>
-              <option value="Monthly Test">Monthly Test</option>
-              <option value="Unit Test">Unit Test</option>
-              <option value="Half-Yearly">Half-Yearly Examination</option>
-              <option value="Pre-Board">Pre-Board Examination</option>
-              <option value="Annual">Annual Examination</option>
-              <option value="Practice">Practice Paper</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="total_marks">Total Marks</label>
-            <input type="number" id="total_marks" value="80" min="10" max="200" required />
-          </div>
-          <div class="form-group">
-            <label for="duration">Duration</label>
-            <select id="duration">
-              <option value="1 Hour">1 Hour</option>
-              <option value="1.5 Hours">1.5 Hours</option>
-              <option value="2 Hours">2 Hours</option>
-              <option value="2.5 Hours">2.5 Hours</option>
-              <option value="3 Hours" selected>3 Hours</option>
-              <option value="3.5 Hours">3.5 Hours</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="difficulty">Difficulty Level</label>
-            <select id="difficulty">
-              <option value="mixed" selected>Mixed (30% Easy, 50% Medium, 20% Hard)</option>
-              <option value="easy">Easy (Recall-based)</option>
-              <option value="medium">Medium (Understanding-based)</option>
-              <option value="hard">Hard (Application &amp; Analysis)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="teacher_name">Teacher's Name <span class="optional-badge">Optional</span></label>
-            <input type="text" id="teacher_name" placeholder="e.g. Mrs. Sharma" maxlength="100" />
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="goToStep2()">
-            Next: Select Chapters &#8594;
-          </button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- STEP 2: CHAPTER SELECTION -->
-  <section class="step-section" id="section-2">
-    <div class="card">
-      <div class="card-header">
-        <h2>&#128218; Chapter Selection</h2>
-        <p>Choose NCERT chapters to include in the question paper</p>
-      </div>
-      <div class="card-body">
-        <div class="chapter-actions">
-          <button class="btn btn-outline btn-sm" onclick="selectAllChapters()">Select All</button>
-          <button class="btn btn-outline btn-sm" onclick="deselectAllChapters()">Deselect All</button>
-          <span class="chapter-count" id="chapter-count">0 chapters selected</span>
-        </div>
-        <div id="chapters-container" class="chapters-grid">
-          <div class="loading-chapters">Loading chapters...</div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="upload-section">
-          <h3>&#128247; Upload Chapter Images (Optional)</h3>
-          <p class="hint">Upload images of chapter pages or diagrams for more contextual questions</p>
-          <div class="upload-zone" id="chapter-upload-zone" onclick="document.getElementById('chapter_images').click()">
-            <div class="upload-icon">&#128190;</div>
-            <div class="upload-text">Click to upload chapter images</div>
-            <div class="upload-hint">PNG, JPG, GIF, WebP supported</div>
-          </div>
-          <input type="file" id="chapter_images" multiple accept="image/*" style="display:none" onchange="handleChapterImageUpload(event)" />
-          <div id="chapter-image-previews" class="image-previews"></div>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn btn-outline" onclick="gotoStep(1)">&#8592; Back</button>
-          <button class="btn btn-primary" onclick="goToStep3()">
-            Next: Configure Questions &#8594;
-          </button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- STEP 3: QUESTION TYPES -->
-  <section class="step-section" id="section-3">
-    <div class="card">
-      <div class="card-header">
-        <h2>&#10067; Question Type Configuration</h2>
-        <p id="qt-subject-hint">Set the number and marks for each type of question</p>
-      </div>
-      <div class="card-body">
-
-        <div class="marks-summary-bar">
-          <div class="marks-summary-inner">
-            <span>Marks Configured:</span>
-            <span class="marks-counter" id="marks-counter">0</span>
-            <span>/ Target:</span>
-            <span class="marks-target" id="marks-target">80</span>
-            <span id="marks-status" class="marks-ok">&#10004;</span>
-          </div>
-        </div>
-
-        <!-- Dynamic question type cards loaded here -->
-        <div id="qt-grid" class="qt-grid">
-          <div class="loading-chapters">Select a subject to load question types...</div>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn btn-outline" onclick="gotoStep(2)">&#8592; Back</button>
-          <button class="btn btn-primary btn-lg" onclick="generatePaper()" id="generate-btn">
-            &#9889; Generate Question Paper
-          </button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- STEP 4: GENERATED PAPER -->
-  <section class="step-section" id="section-4">
-    <div class="paper-toolbar">
-      <button class="btn btn-outline btn-sm" onclick="gotoStep(3)">&#8592; Regenerate</button>
-      <button class="btn btn-success btn-sm" onclick="printPaper()">&#128424; Print / Save as PDF</button>
-      <button class="btn btn-outline btn-sm" onclick="downloadWord()">&#128196; Download Word</button>
-      <button class="btn btn-primary btn-sm" onclick="gotoStep(5)">Evaluate Answer Sheets &#8594;</button>
-    </div>
-
-    <div class="question-paper" id="question-paper-display">
-      <!-- Generated dynamically -->
-    </div>
-
-    <div class="btn-row" style="margin-top:2rem;">
-      <button class="btn btn-primary btn-lg" onclick="gotoStep(5)">
-        &#128196; Proceed to Answer Sheet Evaluation &#8594;
-      </button>
-    </div>
-  </section>
-
-  <!-- STEP 5: EVALUATION -->
-  <section class="step-section" id="section-5">
-    <div class="card" id="eval-form-card">
-      <div class="card-header">
-        <h2>&#128203; Answer Sheet Evaluation</h2>
-        <p>Upload a student's answer sheet to get AI-powered evaluation with detailed marks report</p>
-      </div>
-      <div class="card-body">
-        <div class="form-grid form-grid-2">
-          <div class="form-group">
-            <label for="student_name">Student Name</label>
-            <input type="text" id="student_name" placeholder="Enter student's full name" />
-          </div>
-          <div class="form-group">
-            <label for="roll_no">Roll Number</label>
-            <input type="text" id="roll_no" placeholder="e.g. 2024-101" />
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Upload Answer Sheet</label>
-          <div class="upload-zone large" id="answer-upload-zone" onclick="document.getElementById('answer_sheet').click()">
-            <div class="upload-icon">&#128196;</div>
-            <div class="upload-text">Click to upload answer sheet</div>
-            <div class="upload-hint">Supported: PNG, JPG, PDF, DOC, DOCX, TXT (max 50 MB)</div>
-            <div class="upload-filename" id="upload-filename"></div>
-          </div>
-          <input type="file" id="answer_sheet" style="display:none"
-                 accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.txt"
-                 onchange="handleAnswerSheetUpload(event)" />
-        </div>
-
-        <div class="btn-row">
-          <button class="btn btn-outline" onclick="gotoStep(4)">&#8592; Back to Paper</button>
-          <button class="btn btn-primary btn-lg" onclick="evaluateAnswerSheet()" id="evaluate-btn">
-            &#9889; Evaluate Answer Sheet
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- EVALUATION REPORT -->
-    <div id="evaluation-report" style="display:none;">
-      <div class="report-header-card">
-        <div class="report-header-inner">
-          <div class="report-logo">ExamCraft India &mdash; Evaluation Report</div>
-          <div class="report-meta" id="report-meta"></div>
-        </div>
-        <div class="report-score-box">
-          <div class="score-obtained" id="score-obtained">--</div>
-          <div class="score-total" id="score-total">out of --</div>
-          <div class="score-percentage" id="score-percentage">--%</div>
-          <div class="score-grade" id="score-grade">--</div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:1.5rem;">
+    <!-- STEP 1: EXAM SETUP -->
+    <section class="step-section active" id="section-1">
+      <div class="card">
         <div class="card-header">
-          <h2>&#128202; Section-wise Marks</h2>
-        </div>
-        <div class="card-body" style="padding-top:0;">
-          <div id="section-wise-table"></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:1.5rem;">
-        <div class="card-header">
-          <h2>&#128203; Question-wise Evaluation</h2>
-        </div>
-        <div class="card-body" style="padding-top:0; overflow-x:auto;">
-          <div id="question-wise-table"></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:1.5rem;">
-        <div class="card-header">
-          <h2>&#128172; Examiner's Remarks</h2>
+          <h2>&#9881; Exam Configuration</h2>
+          <p>Set up the basic details of your question paper</p>
         </div>
         <div class="card-body">
-          <p id="examiner-remarks" class="remarks-text"></p>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="board">Board / Curriculum</label>
+              <select id="board" required>
+                <option value="">Select Board...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="class_num">Class</label>
+              <select id="class_num" required>
+                <option value="">Select Class...</option>
+                <option value="1">Class I</option>
+                <option value="2">Class II</option>
+                <option value="3">Class III</option>
+                <option value="4">Class IV</option>
+                <option value="5">Class V</option>
+                <option value="6">Class VI</option>
+                <option value="7">Class VII</option>
+                <option value="8">Class VIII</option>
+                <option value="9">Class IX</option>
+                <option value="10">Class X</option>
+                <option value="11">Class XI</option>
+                <option value="12">Class XII</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="subject">Subject</label>
+              <select id="subject" required disabled>
+                <option value="">Select Class first...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="exam_type">Exam Type</label>
+              <select id="exam_type" required>
+                <option value="Monthly Test">Monthly Test</option>
+                <option value="Unit Test">Unit Test</option>
+                <option value="Half-Yearly">Half-Yearly Examination</option>
+                <option value="Pre-Board">Pre-Board Examination</option>
+                <option value="Annual">Annual Examination</option>
+                <option value="Practice">Practice Paper</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="total_marks">Total Marks</label>
+              <input type="number" id="total_marks" value="80" min="10" max="200" required />
+            </div>
+            <div class="form-group">
+              <label for="duration">Duration</label>
+              <select id="duration">
+                <option value="1 Hour">1 Hour</option>
+                <option value="1.5 Hours">1.5 Hours</option>
+                <option value="2 Hours">2 Hours</option>
+                <option value="2.5 Hours">2.5 Hours</option>
+                <option value="3 Hours" selected>3 Hours</option>
+                <option value="3.5 Hours">3.5 Hours</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="difficulty">Difficulty Level</label>
+              <select id="difficulty">
+                <option value="mixed" selected>Mixed (30% Easy, 50% Medium, 20% Hard)</option>
+                <option value="easy">Easy (Recall-based)</option>
+                <option value="medium">Medium (Understanding-based)</option>
+                <option value="hard">Hard (Application &amp; Analysis)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="teacher_name">Teacher's Name <span class="optional-badge">Optional</span></label>
+              <input type="text" id="teacher_name" placeholder="e.g. Mrs. Sharma" maxlength="100" />
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="goToStep2()">
+              Next: Select Chapters &#8594;
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: CHAPTER SELECTION -->
+    <section class="step-section" id="section-2">
+      <div class="card">
+        <div class="card-header">
+          <h2>&#128218; Chapter Selection</h2>
+          <p>Choose NCERT chapters to include in the question paper</p>
+        </div>
+        <div class="card-body">
+          <div class="chapter-actions">
+            <button class="btn btn-outline btn-sm" onclick="selectAllChapters()">Select All</button>
+            <button class="btn btn-outline btn-sm" onclick="deselectAllChapters()">Deselect All</button>
+            <span class="chapter-count" id="chapter-count">0 chapters selected</span>
+          </div>
+          <div id="chapters-container" class="chapters-grid">
+            <div class="loading-chapters">Loading chapters...</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="upload-section">
+            <h3>&#128247; Upload Chapter Images (Optional)</h3>
+            <p class="hint">Upload images of chapter pages or diagrams for more contextual questions</p>
+            <div class="upload-zone" id="chapter-upload-zone" onclick="document.getElementById('chapter_images').click()">
+              <div class="upload-icon">&#128190;</div>
+              <div class="upload-text">Click to upload chapter images</div>
+              <div class="upload-hint">PNG, JPG, GIF, WebP supported</div>
+            </div>
+            <input type="file" id="chapter_images" multiple accept="image/*" style="display:none" onchange="handleChapterImageUpload(event)" />
+            <div id="chapter-image-previews" class="image-previews"></div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-outline" onclick="gotoStep(1)">&#8592; Back</button>
+            <button class="btn btn-primary" onclick="goToStep3()">
+              Next: Configure Questions &#8594;
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: QUESTION TYPES -->
+    <section class="step-section" id="section-3">
+      <div class="card">
+        <div class="card-header">
+          <h2>&#10067; Question Type Configuration</h2>
+          <p id="qt-subject-hint">Set the number and marks for each type of question</p>
+        </div>
+        <div class="card-body">
+
+          <div class="marks-summary-bar">
+            <div class="marks-summary-inner">
+              <span>Marks Configured:</span>
+              <span class="marks-counter" id="marks-counter">0</span>
+              <span>/ Target:</span>
+              <span class="marks-target" id="marks-target">80</span>
+              <span id="marks-status" class="marks-ok">&#10004;</span>
+            </div>
+          </div>
+
+          <!-- Dynamic question type cards loaded here -->
+          <div id="qt-grid" class="qt-grid">
+            <div class="loading-chapters">Select a subject to load question types...</div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-outline" onclick="gotoStep(2)">&#8592; Back</button>
+            <button class="btn btn-primary btn-lg" onclick="generatePaper()" id="generate-btn">
+              &#9889; Generate Question Paper
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 4: GENERATED PAPER -->
+    <section class="step-section" id="section-4">
+      <div class="paper-toolbar">
+        <button class="btn btn-outline btn-sm" onclick="gotoStep(3)">&#8592; Regenerate</button>
+        <button class="btn btn-success btn-sm" onclick="printPaper()">&#128424; Print / Save as PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="downloadWord()">&#128196; Download Word</button>
+        <button class="btn btn-primary btn-sm" onclick="gotoStep(5)">Evaluate Answer Sheets &#8594;</button>
+      </div>
+
+      <div class="question-paper" id="question-paper-display">
+        <!-- Generated dynamically -->
+      </div>
+
+      <div class="btn-row" style="margin-top:2rem;">
+        <button class="btn btn-primary btn-lg" onclick="gotoStep(5)">
+          &#128196; Proceed to Answer Sheet Evaluation &#8594;
+        </button>
+      </div>
+    </section>
+
+    <!-- STEP 5: EVALUATION -->
+    <section class="step-section" id="section-5">
+      <div class="card" id="eval-form-card">
+        <div class="card-header">
+          <h2>&#128203; Answer Sheet Evaluation</h2>
+          <p>Upload a student's answer sheet to get AI-powered evaluation with detailed marks report</p>
+        </div>
+        <div class="card-body">
+          <div class="form-grid form-grid-2">
+            <div class="form-group">
+              <label for="student_name">Student Name</label>
+              <input type="text" id="student_name" placeholder="Enter student's full name" />
+            </div>
+            <div class="form-group">
+              <label for="roll_no">Roll Number</label>
+              <input type="text" id="roll_no" placeholder="e.g. 2024-101" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Upload Answer Sheet</label>
+            <div class="upload-zone large" id="answer-upload-zone" onclick="document.getElementById('answer_sheet').click()">
+              <div class="upload-icon">&#128196;</div>
+              <div class="upload-text">Click to upload answer sheet</div>
+              <div class="upload-hint">Supported: PNG, JPG, PDF, DOC, DOCX, TXT (max 50 MB)</div>
+              <div class="upload-filename" id="upload-filename"></div>
+            </div>
+            <input type="file" id="answer_sheet" style="display:none"
+                   accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.txt"
+                   onchange="handleAnswerSheetUpload(event)" />
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-outline" onclick="gotoStep(4)">&#8592; Back to Paper</button>
+            <button class="btn btn-primary btn-lg" onclick="evaluateAnswerSheet()" id="evaluate-btn">
+              &#9889; Evaluate Answer Sheet
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="btn-row" style="margin-top:1.5rem;">
-        <button class="btn btn-outline" onclick="resetEvaluation()">&#8635; Evaluate Another Sheet</button>
-        <button class="btn btn-success" onclick="printReport()">&#128424; Print Report</button>
+      <!-- EVALUATION REPORT -->
+      <div id="evaluation-report" style="display:none;">
+        <div class="report-header-card">
+          <div class="report-header-inner">
+            <div class="report-logo">ExamCraft India &mdash; Evaluation Report</div>
+            <div class="report-meta" id="report-meta"></div>
+          </div>
+          <div class="report-score-box">
+            <div class="score-obtained" id="score-obtained">--</div>
+            <div class="score-total" id="score-total">out of --</div>
+            <div class="score-percentage" id="score-percentage">--%</div>
+            <div class="score-grade" id="score-grade">--</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1.5rem;">
+          <div class="card-header">
+            <h2>&#128202; Section-wise Marks</h2>
+          </div>
+          <div class="card-body" style="padding-top:0;">
+            <div id="section-wise-table"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1.5rem;">
+          <div class="card-header">
+            <h2>&#128203; Question-wise Evaluation</h2>
+          </div>
+          <div class="card-body" style="padding-top:0; overflow-x:auto;">
+            <div id="question-wise-table"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:1.5rem;">
+          <div class="card-header">
+            <h2>&#128172; Examiner's Remarks</h2>
+          </div>
+          <div class="card-body">
+            <p id="examiner-remarks" class="remarks-text"></p>
+          </div>
+        </div>
+
+        <div class="btn-row" style="margin-top:1.5rem;">
+          <button class="btn btn-outline" onclick="resetEvaluation()">&#8635; Evaluate Another Sheet</button>
+          <button class="btn btn-success" onclick="printReport()">&#128424; Print Report</button>
+        </div>
       </div>
+    </section>
+
+  </main>
+
+  <!-- HISTORY PANEL -->
+  <div class="history-overlay" id="history-overlay" onclick="closeHistoryPanel()"></div>
+  <div class="history-panel" id="history-panel">
+    <div class="history-panel-header">
+      <h3>&#128196; Paper History</h3>
+      <button class="history-close-btn" onclick="closeHistoryPanel()">&#10005;</button>
     </div>
-  </section>
-
-</main>
-
-<!-- ===== HISTORY PANEL ===== -->
-<div class="history-overlay" id="history-overlay" onclick="closeHistoryPanel()"></div>
-<div class="history-panel" id="history-panel">
-  <div class="history-panel-header">
-    <h3>&#128196; Paper History</h3>
-    <button class="history-close-btn" onclick="closeHistoryPanel()">&#10005;</button>
+    <div class="history-panel-body" id="history-panel-body">
+      <div class="loading-chapters">Loading history...</div>
+    </div>
   </div>
-  <div class="history-panel-body" id="history-panel-body">
-    <div class="loading-chapters">Loading history...</div>
+
+  <!-- FOOTER inside app -->
+  <footer class="site-footer">
+    <div>ExamCraft India &copy; 2025 &mdash; NCERT Aligned Question Paper Generator &amp; Evaluator</div>
+    <div>Powered by Google Gemini AI &bull; All Boards &bull; Classes 1&ndash;12</div>
+  </footer>
+
+</div><!-- /#app-content -->
+
+
+<!-- ===== UPGRADE MODAL ===== -->
+<div id="upgrade-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeUpgradeModal()">&#10005;</button>
+    <h2 style="margin-bottom:0.5rem;">Upgrade Your Plan</h2>
+    <p style="color:var(--text-muted);margin-bottom:1.5rem;font-size:0.9rem;">Payment integration coming soon. Contact us to upgrade.</p>
+    <div class="lp-pricing-grid modal-pricing-grid">
+
+      <div class="pricing-card">
+        <div class="pricing-plan-name">Free</div>
+        <div class="pricing-price">&#8377;0<span class="pricing-period">/month</span></div>
+        <ul class="pricing-features">
+          <li>&#10003; 3 papers / month</li>
+          <li>&#10003; 5 evaluations / month</li>
+          <li>&#10003; All boards &amp; subjects</li>
+          <li>&#10003; PDF &amp; Word download</li>
+        </ul>
+        <span class="pricing-cta-btn pricing-cta-disabled">Current Plan</span>
+      </div>
+
+      <div class="pricing-card popular">
+        <div class="pricing-popular-badge">Most Popular</div>
+        <div class="pricing-plan-name">Pro</div>
+        <div class="pricing-price">&#8377;299<span class="pricing-period">/month</span></div>
+        <ul class="pricing-features">
+          <li>&#10003; Unlimited papers</li>
+          <li>&#10003; Unlimited evaluations</li>
+          <li>&#10003; Word download</li>
+          <li>&#10003; Priority support</li>
+          <li>&#10003; Everything in Free</li>
+        </ul>
+        <a href="mailto:hello@examcraftindia.com?subject=Upgrade to Pro" class="pricing-cta-btn pricing-cta-popular">Contact to Upgrade</a>
+      </div>
+
+      <div class="pricing-card">
+        <div class="pricing-plan-name">School</div>
+        <div class="pricing-price">&#8377;2,999<span class="pricing-period">/month</span></div>
+        <ul class="pricing-features">
+          <li>&#10003; Everything in Pro</li>
+          <li>&#10003; Up to 10 teacher accounts</li>
+          <li>&#10003; School branding</li>
+          <li>&#10003; Dedicated support</li>
+        </ul>
+        <a href="mailto:hello@examcraftindia.com?subject=School Plan" class="pricing-cta-btn">Contact Us</a>
+      </div>
+
+    </div>
   </div>
 </div>
+
 
 <!-- ===== LOADING OVERLAY ===== -->
 <div class="loading-overlay" id="loading-overlay" style="display:none;">
@@ -376,12 +568,6 @@
 
 <!-- ===== TOAST ===== -->
 <div class="toast" id="toast"></div>
-
-<!-- ===== FOOTER ===== -->
-<footer class="site-footer">
-  <div>ExamCraft India &copy; 2025 &mdash; NCERT Aligned Question Paper Generator &amp; Evaluator</div>
-  <div>Powered by Google Gemini AI &bull; All Boards &bull; Classes 1&ndash;12</div>
-</footer>
 
 <script src="/static/js/app.js"></script>
 </body>
