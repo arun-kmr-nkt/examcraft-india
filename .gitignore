@@ -14,3 +14,4 @@ Thumbs.db
 tmp/
 temp/
 test_*.py
+*.db
