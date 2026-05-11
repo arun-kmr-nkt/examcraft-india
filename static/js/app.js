@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadBoards();
   updateMarksTotal();
 
+  document.getElementById('board').addEventListener('change', onClassChange);
   document.getElementById('class_num').addEventListener('change', onClassChange);
   document.getElementById('subject').addEventListener('change', onSubjectChange);
 
@@ -342,7 +343,8 @@ async function loadBoards() {
 /* ===== CLASS / SUBJECT ===== */
 async function onClassChange() {
   const classNum = document.getElementById('class_num').value;
-  const subjSel = document.getElementById('subject');
+  const board    = document.getElementById('board').value;
+  const subjSel  = document.getElementById('subject');
 
   subjSel.innerHTML = '<option value="">Loading...</option>';
   subjSel.disabled = true;
@@ -356,7 +358,7 @@ async function onClassChange() {
     const res = await fetch('/api/subjects', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ class_num: classNum })
+      body: JSON.stringify({ class_num: classNum, board })
     });
     const data = await res.json();
 
@@ -451,7 +453,7 @@ async function loadChapters() {
     const res = await fetch('/api/chapters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ class_num: state.classNum, subject: state.subject })
+      body: JSON.stringify({ class_num: state.classNum, subject: state.subject, board: state.board })
     });
     const data = await res.json();
 
