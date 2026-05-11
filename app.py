@@ -41,6 +41,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'examcraft_india_secret_key_2024')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
+# Cache-busting: changes on every server restart (every Render deploy)
+_STATIC_VERSION = str(int(time.time()))
+
+@app.context_processor
+def inject_static_version():
+    return {'static_v': _STATIC_VERSION}
+
 # Database — prefer PostgreSQL (DATABASE_URL env var on Render), fall back to SQLite
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _db_url = os.environ.get('DATABASE_URL') or f"sqlite:///{os.path.join(BASE_DIR, 'examcraft.db')}"

@@ -450,10 +450,11 @@ async function loadChapters() {
   container.innerHTML = '<div class="loading-chapters">Loading chapters...</div>';
 
   try {
+    const board = state.board || document.getElementById('board').value || '';
     const res = await fetch('/api/chapters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ class_num: state.classNum, subject: state.subject, board: state.board })
+      body: JSON.stringify({ class_num: state.classNum, subject: state.subject, board })
     });
     const data = await res.json();
 
