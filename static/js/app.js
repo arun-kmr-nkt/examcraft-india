@@ -1259,6 +1259,7 @@ function viewHistoryEval(paperId, evalIdx) {
   state.totalMarks = info.total_marks || state.totalMarks;
   const report = typeof ev.report === 'string' ? JSON.parse(ev.report) : ev.report;
   closeHistoryPanel();
+  state.currentStep = 4; // bypass sequential guard so gotoStep(5) works from any step
   gotoStep(5);
   renderEvaluationReport(report);
   showToast('Evaluation report loaded!', 'success');
@@ -1294,6 +1295,7 @@ function restorePaper(paperData, paperId) {
 
     renderQuestionPaper(paper);
     closeHistoryPanel();
+    state.currentStep = 3; // bypass sequential guard so gotoStep(4) works from any step
     gotoStep(4);
     showToast('Paper loaded from history!', 'success');
   } catch (e) {
