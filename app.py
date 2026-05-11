@@ -78,61 +78,119 @@ else:
 CONTACT_EMAIL = 'arun.kmr06@gmail.com'
 
 
-def _get_smtp_config():
-    """Read SMTP config fresh from env each call so Render restarts pick up new values."""
-    return {
-        'host': os.environ.get('SMTP_HOST', 'smtp.gmail.com'),
-        'port': int(os.environ.get('SMTP_PORT', '587')),
-        'user': os.environ.get('SMTP_USER', '').strip(),
-        # Gmail App Passwords are shown with spaces (e.g. "abcd efgh ijkl mnop") — strip them
-        'password': os.environ.get('SMTP_PASS', '').replace(' ', '').strip(),
-    }
+def _email_body(name, email, mobile, school_name, message, request_type):
+    return (
+        f"ExamCraft India - New {request_type.title()} Request\n\n"
+        f"Name:    {name}\n"
+        f"Email:   {email}\n"
+        f"Mobile:  {mobile or 'Not provided'}\n"
+        f"School:  {school_name or 'Not provided'}\n"
+        f"Type:    {request_type.title()}\n\n"
+        f"Message:\n{message or 'No message provided'}\n\n"
+        f"---\nReceived at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+    )
 
 
-def send_contact_email(name, email, mobile, school_name, message, request_type):
-    cfg = _get_smtp_config()
-    if not cfg['user'] or not cfg['password']:
-        print('[EMAIL] SMTP_USER or SMTP_PASS not configured — skipping email.')
-        return False, 'SMTP credentials not configured'
+def _send_via_resend(subject, body):
+    """Send via Resend HTTP API — works on all hosts, never blocked by firewall."""
+    import requests as http
+    api_key = os.environ.get('RESEND_API_KEY', '').strip()
     try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f'ExamCraft India - {"Callback Request" if request_type == "callback" else "Contact Request"} from {name}'
-        msg['From']     = cfg['user']
-        msg['To']       = CONTACT_EMAIL
-        msg['Reply-To'] = email
-        body = (
-            f"ExamCraft India — New {request_type.title()} Request\n\n"
-            f"Name:    {name}\n"
-            f"Email:   {email}\n"
-            f"Mobile:  {mobile or 'Not provided'}\n"
-            f"School:  {school_name or 'Not provided'}\n"
-            f"Type:    {request_type.title()}\n\n"
-            f"Message:\n{message or 'No message provided'}\n\n"
-            f"---\nReceived at: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"
+        resp = http.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {api_key}',
+                     'Content-Type': 'application/json'},
+            json={'from': 'ExamCraft India <onboarding@resend.dev>',
+                  'to': [CONTACT_EMAIL],
+                  'subject': subject,
+                  'text': body},
+            timeout=15,
         )
-        msg.attach(MIMEText(body, 'plain'))
-
-        print(f'[EMAIL] Connecting to {cfg["host"]}:{cfg["port"]} as {cfg["user"]}')
-        with smtplib.SMTP(cfg['host'], cfg['port'], timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(cfg['user'], cfg['password'])
-            server.sendmail(cfg['user'], CONTACT_EMAIL, msg.as_string())
-        print(f'[EMAIL] Sent successfully to {CONTACT_EMAIL}')
-        return True, None
-    except smtplib.SMTPAuthenticationError:
-        err = 'SMTP authentication failed — check SMTP_USER and SMTP_PASS (use a Gmail App Password, not your regular password)'
-        print(f'[EMAIL ERROR] {err}')
-        return False, err
-    except smtplib.SMTPException as e:
-        err = f'SMTP error: {e}'
+        if resp.status_code in (200, 201):
+            print(f'[EMAIL] Sent via Resend to {CONTACT_EMAIL}')
+            return True, None
+        err = f'Resend API returned {resp.status_code}: {resp.text}'
         print(f'[EMAIL ERROR] {err}')
         return False, err
     except Exception as e:
-        err = f'Unexpected email error: {e}'
+        err = f'Resend request failed: {e}'
         print(f'[EMAIL ERROR] {err}')
         return False, err
+
+
+def _smtp_message(subject, smtp_user, reply_to, body):
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From']    = smtp_user
+    msg['To']      = CONTACT_EMAIL
+    msg['Reply-To'] = reply_to
+    msg.attach(MIMEText(body, 'plain'))
+    return msg.as_string()
+
+
+def _send_via_smtp(subject, reply_to, body):
+    """Try Gmail SSL (port 465) first, then STARTTLS (port 587) as fallback."""
+    smtp_user = os.environ.get('SMTP_USER', '').strip()
+    smtp_pass = os.environ.get('SMTP_PASS', '').replace(' ', '').strip()
+    smtp_host = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+    raw = _smtp_message(subject, smtp_user, reply_to, body)
+
+    # ── Attempt 1: SSL on port 465 (most reliable on cloud hosts) ────────────
+    try:
+        print(f'[EMAIL] Trying SMTP SSL port 465 → {smtp_host}')
+        with smtplib.SMTP_SSL(smtp_host, 465, timeout=15) as srv:
+            srv.login(smtp_user, smtp_pass)
+            srv.sendmail(smtp_user, CONTACT_EMAIL, raw)
+        print(f'[EMAIL] Sent via SSL to {CONTACT_EMAIL}')
+        return True, None
+    except smtplib.SMTPAuthenticationError:
+        err = ('Gmail authentication failed. '
+               'Make sure SMTP_USER is your full Gmail address and '
+               'SMTP_PASS is a Gmail App Password (not your normal password). '
+               'Also confirm 2-Step Verification is ON at myaccount.google.com.')
+        print(f'[EMAIL ERROR] {err}')
+        return False, err          # Auth errors won't be fixed by retrying
+    except Exception as e:
+        print(f'[EMAIL] SSL port 465 failed ({e}) — trying STARTTLS port 587')
+
+    # ── Attempt 2: STARTTLS on port 587 ──────────────────────────────────────
+    try:
+        print(f'[EMAIL] Trying SMTP STARTTLS port 587 → {smtp_host}')
+        with smtplib.SMTP(smtp_host, 587, timeout=15) as srv:
+            srv.ehlo()
+            srv.starttls()
+            srv.ehlo()
+            srv.login(smtp_user, smtp_pass)
+            srv.sendmail(smtp_user, CONTACT_EMAIL, raw)
+        print(f'[EMAIL] Sent via STARTTLS to {CONTACT_EMAIL}')
+        return True, None
+    except smtplib.SMTPAuthenticationError:
+        err = ('Gmail authentication failed. '
+               'SMTP_PASS must be a Gmail App Password, not your regular password.')
+        print(f'[EMAIL ERROR] {err}')
+        return False, err
+    except Exception as e:
+        err = f'Both SMTP methods failed. Last error: {e}'
+        print(f'[EMAIL ERROR] {err}')
+        return False, err
+
+
+def send_contact_email(name, email, mobile, school_name, message, request_type):
+    subject = (f'ExamCraft India - '
+               f'{"Callback Request" if request_type == "callback" else "Contact Request"}'
+               f' from {name}')
+    body = _email_body(name, email, mobile, school_name, message, request_type)
+
+    # Resend HTTP API takes priority (most reliable on any host)
+    if os.environ.get('RESEND_API_KEY', '').strip():
+        return _send_via_resend(subject, body)
+
+    # Fall back to Gmail SMTP (tries port 465 SSL, then 587 STARTTLS)
+    if os.environ.get('SMTP_USER', '').strip():
+        return _send_via_smtp(subject, email, body)
+
+    print('[EMAIL] No email service configured — set RESEND_API_KEY or SMTP_USER/SMTP_PASS')
+    return False, 'No email service configured'
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1333,21 +1391,28 @@ def unarchive_paper(paper_id):
 
 @app.route('/api/admin/test-email')
 def test_email():
-    """Quick diagnostic: hit this URL while logged in to test SMTP config."""
+    """Diagnostic endpoint — visit while logged in to test email config."""
     if not current_user.is_authenticated:
         return jsonify({'error': 'auth_required'}), 401
-    cfg = _get_smtp_config()
+
+    resend_key  = os.environ.get('RESEND_API_KEY', '').strip()
+    smtp_user   = os.environ.get('SMTP_USER', '').strip()
+    smtp_pass   = os.environ.get('SMTP_PASS', '').replace(' ', '').strip()
+    active_service = 'resend' if resend_key else ('smtp' if smtp_user else 'none')
+
     ok, err = send_contact_email(
         name='Test', email=current_user.email,
-        mobile='', school_name='', message='This is a test email from ExamCraft India.',
+        mobile='9999999999', school_name='Test School',
+        message='This is a test email from ExamCraft India diagnostic.',
         request_type='contact',
     )
     return jsonify({
-        'smtp_user_set': bool(cfg['user']),
-        'smtp_pass_set': bool(cfg['password']),
-        'smtp_host': cfg['host'],
-        'smtp_port': cfg['port'],
-        'sent': ok,
+        'active_service': active_service,
+        'resend_key_set': bool(resend_key),
+        'smtp_user_set':  bool(smtp_user),
+        'smtp_pass_set':  bool(smtp_pass),
+        'smtp_host':      os.environ.get('SMTP_HOST', 'smtp.gmail.com'),
+        'sent':  ok,
         'error': err,
     })
 
