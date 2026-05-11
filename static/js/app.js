@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadBoards();
   updateMarksTotal();
 
-  document.getElementById('board').addEventListener('change', onClassChange);
+  document.getElementById('board').addEventListener('change', onBoardChange);
   document.getElementById('class_num').addEventListener('change', onClassChange);
   document.getElementById('subject').addEventListener('change', onSubjectChange);
 
@@ -341,10 +341,16 @@ async function loadBoards() {
 }
 
 /* ===== CLASS / SUBJECT ===== */
+function onBoardChange() {
+  state.board = document.getElementById('board').value;
+  onClassChange();
+}
+
 async function onClassChange() {
   const classNum = document.getElementById('class_num').value;
-  const board    = document.getElementById('board').value;
+  const board    = state.board || document.getElementById('board').value || '';
   const subjSel  = document.getElementById('subject');
+  console.log('[ExamCraft] onClassChange board=' + board + ' class=' + classNum);
 
   subjSel.innerHTML = '<option value="">Loading...</option>';
   subjSel.disabled = true;
@@ -361,6 +367,7 @@ async function onClassChange() {
       body: JSON.stringify({ class_num: classNum, board })
     });
     const data = await res.json();
+    console.log('[ExamCraft] subjects received:', data.subjects);
 
     subjSel.innerHTML = '<option value="">Select Subject...</option>';
     data.subjects.forEach(s => {

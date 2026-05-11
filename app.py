@@ -2360,7 +2360,7 @@ def _extract_chapters(chapter_dict, subject, class_num):
 
 @app.route('/api/subjects', methods=['POST'])
 def get_subjects():
-    data = request.json
+    data      = request.get_json(force=True, silent=True) or {}
     class_num = str(data.get('class_num', ''))
     board     = data.get('board', '')
     if board == 'Oxford (OUP India)':
@@ -2369,23 +2369,48 @@ def get_subjects():
         subjects = KIPS_SUBJECTS_BY_CLASS.get(class_num, [])
     else:
         subjects = SUBJECTS_BY_CLASS.get(class_num, [])
+    app.logger.info(f"subjects: board={repr(board)} class={repr(class_num)} -> {subjects}")
     return jsonify({'subjects': subjects})
 
 
 @app.route('/api/chapters', methods=['POST'])
 def get_chapters():
-    data      = request.json
+    data      = request.get_json(force=True, silent=True) or {}
     subject   = data.get('subject', '')
     class_num = str(data.get('class_num', ''))
     board     = data.get('board', '')
 
-    primary = _chapter_dict_for_board(board)
+    primary  = _chapter_dict_for_board(board)
     chapters = _extract_chapters(primary, subject, class_num)
-    # Fall back to NCERT when board-specific dict has no entry
     if not chapters and primary is not NCERT_CHAPTERS:
         chapters = _extract_chapters(NCERT_CHAPTERS, subject, class_num)
 
+    app.logger.info(f"chapters: board={repr(board)} class={repr(class_num)} subject={repr(subject)} -> {len(chapters)} chapters")
     return jsonify({'chapters': chapters})
+
+
+@app.route('/api/debug/board', methods=['GET'])
+def debug_board():
+    """Read-only test endpoint — hit in browser to verify board data."""
+    board     = request.args.get('board', 'Oxford (OUP India)')
+    class_num = request.args.get('class_num', '6')
+    if board == 'Oxford (OUP India)':
+        subjects   = OXFORD_SUBJECTS_BY_CLASS.get(class_num, [])
+        ch_source  = 'OXFORD_CHAPTERS'
+    elif board == 'KIPS India':
+        subjects   = KIPS_SUBJECTS_BY_CLASS.get(class_num, [])
+        ch_source  = 'KIPS_CHAPTERS'
+    else:
+        subjects   = SUBJECTS_BY_CLASS.get(class_num, [])
+        ch_source  = 'NCERT_CHAPTERS'
+    primary = _chapter_dict_for_board(board)
+    chapter_counts = {s: len(_extract_chapters(primary, s, class_num)) for s in subjects}
+    return jsonify({
+        'board': board, 'class_num': class_num,
+        'chapters_source': ch_source,
+        'subjects': subjects,
+        'chapter_counts': chapter_counts,
+    })
 
 
 @app.route('/api/custom-chapters', methods=['GET'])
