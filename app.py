@@ -40,11 +40,13 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'examcraft_india_secret_key_2024')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-# SQLite database
+# Database — prefer PostgreSQL (DATABASE_URL env var on Render), fall back to SQLite
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    os.environ.get('DATABASE_URL') or f"sqlite:///{os.path.join(BASE_DIR, 'examcraft.db')}"
-)
+_db_url = os.environ.get('DATABASE_URL') or f"sqlite:///{os.path.join(BASE_DIR, 'examcraft.db')}"
+# Render provides "postgres://" but SQLAlchemy 1.4+ requires "postgresql://"
+if _db_url.startswith('postgres://'):
+    _db_url = 'postgresql://' + _db_url[len('postgres://'):]
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -289,14 +291,21 @@ def load_user(user_id):
 # PLANS & SUBSCRIPTION HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Admin accounts — unlimited access, no restrictions
+ADMIN_EMAILS = {'rajmft@gmail.com', 'arun.kmr06@gmail.com'}
+
 PLANS = {
-    'free':   {'name': 'Free',   'price_monthly': 0,    'papers_per_month': 3,  'evals_per_month': 5,  'features': ['3 papers / month', '5 evaluations / month', 'All boards & subjects', 'PDF & Word download']},
+    'free':   {'name': 'Free',   'price_monthly': 0,    'papers_per_month': 10, 'evals_per_month': 15, 'features': ['10 papers / month', '15 evaluations / month', 'All boards & subjects', 'PDF & Word download']},
     'pro':    {'name': 'Pro',    'price_monthly': 299,  'papers_per_month': -1, 'evals_per_month': -1, 'features': ['Unlimited papers', 'Unlimited evaluations', 'Word download', 'Priority support', 'Everything in Free']},
     'school': {'name': 'School', 'price_monthly': 2999, 'papers_per_month': -1, 'evals_per_month': -1, 'features': ['Everything in Pro', 'Up to 10 teacher accounts', 'School branding', 'Dedicated support']},
+    'admin':  {'name': 'Admin',  'price_monthly': 0,    'papers_per_month': -1, 'evals_per_month': -1, 'features': ['Unlimited everything']},
 }
 
 
 def get_user_plan(user_id):
+    user = db.session.get(User, user_id)
+    if user and user.email in ADMIN_EMAILS:
+        return 'admin', PLANS['admin']
     sub = UserSubscription.query.filter_by(user_id=user_id).first()
     plan_key = sub.plan if sub else 'free'
     return plan_key, PLANS.get(plan_key, PLANS['free'])
@@ -1195,6 +1204,7 @@ def api_user():
             'plan':            plan_key,
             'plan_info':       plan_info,
             'usage':           usage,
+            'is_admin':        current_user.email in ADMIN_EMAILS,
             'oauth_available': _OAUTH_CONFIGURED,
         })
     return jsonify({'logged_in': False, 'oauth_available': _OAUTH_CONFIGURED})
