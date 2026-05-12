@@ -402,14 +402,94 @@ def gemini_generate(client, contents, config, max_retries=3):
     raise last_err   # all models exhausted
 
 
+def _fix_json_strings(text):
+    """Walk the raw text character-by-character and escape any bare control
+    characters (newline, tab, carriage-return) that appear inside JSON string
+    values. This is the most common cause of JSONDecodeError from AI responses."""
+    result = []
+    in_string = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == '\\' and i + 1 < len(text):
+                # Already-escaped sequence — copy both chars verbatim
+                result.append(c)
+                i += 1
+                result.append(text[i])
+            elif c == '"':
+                in_string = False
+                result.append(c)
+            elif c == '\n':
+                result.append('\\n')
+            elif c == '\r':
+                result.append('\\r')
+            elif c == '\t':
+                result.append('\\t')
+            elif ord(c) < 0x20:
+                pass  # drop other control chars
+            else:
+                result.append(c)
+        else:
+            if c == '"':
+                in_string = True
+            result.append(c)
+        i += 1
+    return ''.join(result)
+
+
 def extract_json(text):
-    """Extract JSON from model response, handling markdown code fences."""
-    text = re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=re.MULTILINE)
-    text = re.sub(r'\s*```\s*$', '', text.strip(), flags=re.MULTILINE)
-    match = re.search(r'\{[\s\S]*\}', text)
-    if not match:
-        raise ValueError("No JSON object found in response")
-    return json.loads(match.group())
+    """Robustly extract and parse JSON from an AI model response.
+
+    Attempts five progressive strategies:
+    1. Direct parse (response was already valid JSON).
+    2. Strip markdown fences, then parse.
+    3. Extract outermost { … } block, then parse.
+    4. Apply common structural fixes (trailing commas, NaN/Infinity/undefined),
+       then parse.
+    5. Fix unescaped control characters inside string values, then parse.
+    Raises JSONDecodeError only when all five strategies fail.
+    """
+    # Pre-processing: replace NaN/Infinity/undefined before any parse attempt.
+    # Python's json.loads silently accepts NaN (producing float('nan')) which
+    # would later cause json.dumps to emit invalid JSON.
+    raw = re.sub(r'\b(NaN|-?Infinity|undefined)\b', 'null', text.strip())
+
+    # ── Stage 1: direct parse ──────────────────────────────────────────────────
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Stage 2: strip markdown fences ────────────────────────────────────────
+    cleaned = re.sub(r'^```(?:json)?\s*\n?', '', raw, flags=re.MULTILINE)
+    cleaned = re.sub(r'\n?```\s*$', '', cleaned, flags=re.MULTILINE).strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Stage 3: extract outermost { … } block ────────────────────────────────
+    start = cleaned.find('{')
+    end   = cleaned.rfind('}')
+    if start == -1 or end <= start:
+        raise json.JSONDecodeError("No JSON object found", cleaned, 0)
+    extracted = cleaned[start:end + 1]
+    try:
+        return json.loads(extracted)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Stage 4: fix trailing commas ──────────────────────────────────────────
+    fixed = re.sub(r',\s*([}\]])', r'\1', extracted)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Stage 5: fix unescaped control chars in strings ───────────────────────
+    fully_fixed = _fix_json_strings(fixed)
+    return json.loads(fully_fixed)   # let this raise if still broken
 
 
 def allowed_file(filename):
@@ -1656,11 +1736,18 @@ INSTRUCTIONS FOR GENERATION:
 6. For Diagram questions: specify what to draw/label with clear instructions
 7. Include proper general instructions at the top
 8. Add complete answer key at the end
-9. Use ^{{text}} for superscripts (e.g., x^{{2}}, CO_2^{{-}}) and _{{text}} for subscripts (e.g., H_{{2}}O, CO_{{2}}). Use these for all chemical formulas and math expressions.
+9. Use ^{{text}} for superscripts (e.g., x^{{2}}) and _{{text}} for subscripts (e.g., H_{{2}}O). Do NOT use LaTeX backslash commands (no \\frac, \\sqrt, \\times etc.). Write fractions as a/b, roots as sqrt(x), and use Unicode symbols (×, ÷, ≥, ≤, π, √) directly.
+
+CRITICAL JSON RULES (the output must be valid JSON):
+- Do NOT use double-quote characters (") inside any string value. Use single quotes or rephrase.
+- Do NOT include literal newlines or tab characters inside any string value — keep each value on a single line.
+- Do NOT use backslash (\\) except for valid JSON escape sequences (\\", \\\\, \\n, \\t).
+- Every string must be properly terminated with a closing double-quote.
+- No trailing commas after the last element of arrays or objects.
 
 {"Reference the uploaded chapter content/images for question creation." if pil_images else ""}
 
-Return ONLY a valid JSON object (no markdown, no explanation) with this EXACT structure:
+Return ONLY a valid JSON object (no markdown, no explanation, no text before or after the JSON) with this EXACT structure:
 {{
   "paper_info": {{
     "board": "{board}",
@@ -1706,12 +1793,17 @@ Generate all questions as specified. Make them appropriate for Class {class_num}
         # Build Gemini content: images first, then the prompt text
         contents = pil_images + [prompt_text]
 
+        # Lower temperature for technical subjects to reduce hallucination in JSON
+        _TECHNICAL = {'Mathematics', 'Physics', 'Chemistry', 'Science', 'Accountancy',
+                      'Computer Science', 'Information Technology'}
+        gen_temp = 0.4 if subject in _TECHNICAL else 0.6
+
         response = gemini_generate(
             gemini,
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                max_output_tokens=16000,
-                temperature=0.7,
+                max_output_tokens=20000,
+                temperature=gen_temp,
                 response_mime_type='application/json',
             ),
         )
@@ -1719,12 +1811,12 @@ Generate all questions as specified. Make them appropriate for Class {class_num}
         response_text = response.text
 
         try:
-            paper_json = json.loads(response_text)
-        except json.JSONDecodeError:
-            try:
-                paper_json = extract_json(response_text)
-            except (ValueError, json.JSONDecodeError) as e:
-                return jsonify({'error': f'Failed to parse generated paper: {str(e)}', 'raw_preview': response_text[:300]}), 500
+            paper_json = extract_json(response_text)
+        except (ValueError, json.JSONDecodeError) as e:
+            return jsonify({
+                'error': f'Failed to parse generated paper: {str(e)}',
+                'raw_preview': response_text[:500],
+            }), 500
 
         session['question_paper'] = paper_json
 
@@ -1900,12 +1992,9 @@ Be accurate and fair. Do not inflate or deflate marks."""
 
         response_text = response.text
         try:
-            eval_json = json.loads(response_text)
-        except json.JSONDecodeError:
-            try:
-                eval_json = extract_json(response_text)
-            except (ValueError, json.JSONDecodeError) as e:
-                return jsonify({'error': f'Evaluation parsing error: {str(e)}'}), 500
+            eval_json = extract_json(response_text)
+        except (ValueError, json.JSONDecodeError) as e:
+            return jsonify({'error': f'Evaluation parsing error: {str(e)}'}), 500
 
         # Save evaluation to database
         sid         = get_session_id()
