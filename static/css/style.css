@@ -753,6 +753,17 @@ body {
   margin-bottom: 1.5rem;
 }
 
+.qp-school-logo-wrap { margin-bottom: 0.5rem; }
+.qp-school-logo { max-height: 72px; max-width: 200px; object-fit: contain; }
+.qp-school-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+}
+
 .qp-school { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }
 
 .qp-title {
@@ -862,6 +873,67 @@ body {
   color: var(--text-muted);
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* Edit button per question */
+.q-edit-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1rem;
+  padding: 0 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.qp-question:hover .q-edit-btn { opacity: 1; }
+
+.q-edit-textarea {
+  width: 100%;
+  min-height: 72px;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+
+.q-edit-btns {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+/* School logo upload zone */
+.logo-upload-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.logo-upload-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  min-width: 180px;
+  height: 64px;
+}
+.logo-upload-zone:hover { border-color: var(--primary); }
+#logo-upload-placeholder { display: flex; align-items: center; gap: 0.5rem; }
+
+.logo-preview-img {
+  max-height: 48px;
+  max-width: 140px;
+  object-fit: contain;
 }
 
 .qp-options {

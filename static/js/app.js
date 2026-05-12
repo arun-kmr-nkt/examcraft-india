@@ -9,6 +9,8 @@ const state = {
   duration: '3 Hours',
   difficulty: 'mixed',
   teacherName: '',
+  schoolName: '',
+  schoolLogoDataUrl: '',
   selectedChapters: [],
   chapterImages: [],
   questionTypes: {},
@@ -413,6 +415,31 @@ function gotoStep(step) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+/* ===== SCHOOL LOGO ===== */
+function handleLogoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    state.schoolLogoDataUrl = e.target.result;
+    const img = document.getElementById('logo-preview-img');
+    img.src = e.target.result;
+    document.getElementById('logo-preview-wrap').style.display = 'block';
+    document.getElementById('logo-upload-placeholder').style.display = 'none';
+    document.getElementById('logo-remove-btn').style.display = 'inline-flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  state.schoolLogoDataUrl = '';
+  document.getElementById('school_logo').value = '';
+  document.getElementById('logo-preview-img').src = '';
+  document.getElementById('logo-preview-wrap').style.display = 'none';
+  document.getElementById('logo-upload-placeholder').style.display = 'flex';
+  document.getElementById('logo-remove-btn').style.display = 'none';
+}
+
 function goToStep2() {
   const board = document.getElementById('board').value;
   const classNum = document.getElementById('class_num').value;
@@ -432,6 +459,7 @@ function goToStep2() {
   state.duration = document.getElementById('duration').value;
   state.difficulty = document.getElementById('difficulty').value;
   state.teacherName = document.getElementById('teacher_name').value.trim();
+  state.schoolName = document.getElementById('school_name').value.trim();
 
   document.getElementById('marks-target').textContent = state.totalMarks;
   updateMarksTotal();
@@ -879,6 +907,7 @@ async function generatePaper() {
     formData.append('duration', state.duration);
     formData.append('difficulty', state.difficulty);
     formData.append('teacher_name', state.teacherName);
+    formData.append('school_name', state.schoolName);
     formData.append('chapters', JSON.stringify(state.selectedChapters));
     formData.append('question_types', JSON.stringify(qt));
 
@@ -925,8 +954,17 @@ function renderQuestionPaper(paper) {
   const container = document.getElementById('question-paper-display');
   const info = paper.paper_info || {};
 
-  let html = `
-    <div class="qp-header">
+  let html = `<div class="qp-header">`;
+
+  // School logo + name
+  if (state.schoolLogoDataUrl) {
+    html += `<div class="qp-school-logo-wrap"><img src="${state.schoolLogoDataUrl}" alt="School Logo" class="qp-school-logo" /></div>`;
+  }
+  if (state.schoolName) {
+    html += `<div class="qp-school-name">${escapeHtml(state.schoolName)}</div>`;
+  }
+
+  html += `
       <div class="qp-school">${escapeHtml(info.board || state.board)} &mdash; NCERT Curriculum</div>
       <div class="qp-title">${escapeHtml(info.subject || state.subject)}</div>
       <div class="qp-exam-type">${escapeHtml(info.exam_type || state.examType)}</div>
@@ -966,7 +1004,7 @@ function renderQuestionPaper(paper) {
   }
 
   let globalQNum = 1;
-  (paper.sections || []).forEach(section => {
+  (paper.sections || []).forEach((section, secIdx) => {
     html += `
       <div class="qp-section">
         <div class="qp-section-header">
@@ -975,12 +1013,12 @@ function renderQuestionPaper(paper) {
         </div>
     `;
 
-    (section.questions || []).forEach((q) => {
+    (section.questions || []).forEach((q, qIdx) => {
       const type = section.type;
       html += `<div class="qp-question"><div class="qp-question-row">`;
       html += `<span class="qp-q-num">${globalQNum}.</span>`;
 
-      let qBody = `<div class="qp-q-text">`;
+      let qBody = `<div class="qp-q-text" id="qtext-${secIdx}-${qIdx}">`;
 
       if (type === 'mcq' || type === 'assertion_reason') {
         qBody += formatFormula(q.text || '');
@@ -1026,6 +1064,7 @@ function renderQuestionPaper(paper) {
       qBody += `</div>`;
       html += qBody;
       html += `<span class="qp-q-marks">[${q.marks || 1} mark${(q.marks || 1) > 1 ? 's' : ''}]</span>`;
+      html += `<button class="q-edit-btn" onclick="editQuestion(${secIdx},${qIdx})" title="Edit question">&#9998;</button>`;
       html += `</div></div>`;
       globalQNum++;
     });
@@ -1440,6 +1479,34 @@ function restorePaper(paperData, paperId) {
   }
 }
 
+/* ===== INLINE QUESTION EDITING ===== */
+function editQuestion(secIdx, qIdx) {
+  const q = state.questionPaper.sections[secIdx].questions[qIdx];
+  const textEl = document.getElementById(`qtext-${secIdx}-${qIdx}`);
+  if (!textEl) return;
+  const currentText = q.text || '';
+  textEl.innerHTML = `
+    <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}" rows="3">${currentText.replace(/</g,'&lt;')}</textarea>
+    <div class="q-edit-btns">
+      <button class="btn btn-primary btn-sm" onclick="saveQuestion(${secIdx},${qIdx})">&#10003; Save</button>
+      <button class="btn btn-outline btn-sm" onclick="cancelEditQuestion()">Cancel</button>
+    </div>
+  `;
+  document.getElementById(`qedit-${secIdx}-${qIdx}`).focus();
+}
+
+function saveQuestion(secIdx, qIdx) {
+  const ta = document.getElementById(`qedit-${secIdx}-${qIdx}`);
+  if (!ta) return;
+  state.questionPaper.sections[secIdx].questions[qIdx].text = ta.value.trim();
+  renderQuestionPaper(state.questionPaper);
+  showToast('Question updated!', 'success');
+}
+
+function cancelEditQuestion() {
+  renderQuestionPaper(state.questionPaper);
+}
+
 /* ===== PRINT & DOWNLOAD ===== */
 function printPaper() {
   document.body.classList.remove('print-report');
@@ -1466,6 +1533,10 @@ async function downloadWord() {
   try {
     const formData = new FormData();
     formData.append('paper_json', JSON.stringify(state.questionPaper));
+    formData.append('school_name', state.schoolName || '');
+    if (state.schoolLogoDataUrl) {
+      formData.append('school_logo', state.schoolLogoDataUrl);
+    }
 
     const res = await fetch('/api/download-word', { method: 'POST', body: formData });
 

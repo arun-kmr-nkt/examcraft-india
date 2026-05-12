@@ -286,6 +286,26 @@
               <label for="teacher_name">Teacher's Name <span class="optional-badge">Optional</span></label>
               <input type="text" id="teacher_name" placeholder="e.g. Mrs. Sharma" maxlength="100" />
             </div>
+            <div class="form-group">
+              <label for="school_name">School Name <span class="optional-badge">Optional</span></label>
+              <input type="text" id="school_name" placeholder="e.g. Delhi Public School" maxlength="150" />
+            </div>
+            <div class="form-group">
+              <label for="school_logo">School Logo <span class="optional-badge">Optional</span></label>
+              <div class="logo-upload-row">
+                <div class="logo-upload-zone" id="logo-upload-zone" onclick="document.getElementById('school_logo').click()">
+                  <div id="logo-preview-wrap" style="display:none;">
+                    <img id="logo-preview-img" src="" alt="School Logo" class="logo-preview-img" />
+                  </div>
+                  <div id="logo-upload-placeholder">
+                    <span style="font-size:1.5rem;">&#127968;</span>
+                    <span style="font-size:0.82rem;color:var(--text-muted);">Click to upload logo (PNG/JPG)</span>
+                  </div>
+                </div>
+                <button class="btn btn-outline btn-sm" id="logo-remove-btn" style="display:none;" onclick="removeLogo()">&#10005; Remove</button>
+              </div>
+              <input type="file" id="school_logo" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleLogoUpload(event)" />
+            </div>
           </div>
           <div class="btn-row">
             <button class="btn btn-primary" onclick="goToStep2()">
