@@ -20,12 +20,41 @@ const state = {
   currentUser: null,
 };
 
+/* ===== NETWORK RETRY UTILITY ===== */
+/**
+ * Wraps fetch() with automatic retry on network failures (e.g. cold-start after
+ * deployment). Only retries on connection errors — HTTP error responses (4xx, 5xx)
+ * are returned immediately without retrying.
+ *
+ * @param {string}   url
+ * @param {object}   options    — standard fetch options
+ * @param {number}   maxRetries — total attempts (default 3)
+ * @param {number}   delay      — ms between attempts, linear (default 1500)
+ * @param {function} onRetry    — optional callback(attemptNumber) called before each retry
+ */
+async function _fetchWithRetry(url, options = {}, maxRetries = 3, delay = 1500, onRetry = null) {
+  let lastErr;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fetch(url, options);  // success or HTTP error → return as-is
+    } catch (err) {
+      lastErr = err;                     // only TypeError (network failure) reaches here
+      if (attempt < maxRetries - 1) {
+        if (onRetry) onRetry(attempt + 1, maxRetries);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 /* ===== INIT ===== */
 document.addEventListener('DOMContentLoaded', async () => {
   // Auth gate — check login state first, then decide what to show
+  // Use retry so a cold-start after deployment doesn't strand the user.
   let user = null;
   try {
-    const res = await fetch('/api/user');
+    const res = await _fetchWithRetry('/api/user', {}, 3, 1500);
     user = await res.json();
   } catch (e) {
     user = { logged_in: false };
@@ -109,29 +138,35 @@ function switchAuthTab(tab) {
 
 async function handleLogin(event) {
   event.preventDefault();
-  const btn = document.getElementById('login-submit-btn');
+  const btn   = document.getElementById('login-submit-btn');
   const errEl = document.getElementById('login-error');
   btn.disabled = true;
   btn.textContent = 'Signing in...';
   errEl.style.display = 'none';
   try {
-    const res = await fetch('/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: document.getElementById('login-email').value.trim(),
-        password: document.getElementById('login-password').value,
-      }),
-    });
+    const res = await _fetchWithRetry(
+      '/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:    document.getElementById('login-email').value.trim(),
+          password: document.getElementById('login-password').value,
+        }),
+      },
+      3, 1500,
+      (attempt, total) => { btn.textContent = `Connecting… (${attempt}/${total})`; }
+    );
     const data = await res.json();
     if (!res.ok) {
       errEl.textContent = data.error;
       errEl.style.display = 'block';
     } else {
+      btn.textContent = 'Signing in…';
       window.location.reload();
     }
   } catch (e) {
-    errEl.textContent = 'Network error. Please try again.';
+    errEl.textContent = 'Unable to reach the server. Please check your connection and try again.';
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
@@ -154,15 +189,20 @@ async function handleRegister(event) {
   btn.textContent = 'Creating account...';
   errEl.style.display = 'none';
   try {
-    const res = await fetch('/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: document.getElementById('reg-name').value.trim(),
-        email: document.getElementById('reg-email').value.trim(),
-        password,
-      }),
-    });
+    const res = await _fetchWithRetry(
+      '/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:     document.getElementById('reg-name').value.trim(),
+          email:    document.getElementById('reg-email').value.trim(),
+          password,
+        }),
+      },
+      3, 1500,
+      (attempt, total) => { btn.textContent = `Connecting… (${attempt}/${total})`; }
+    );
     const data = await res.json();
     if (!res.ok) {
       errEl.textContent = data.error;
@@ -171,7 +211,7 @@ async function handleRegister(event) {
       window.location.reload();
     }
   } catch (e) {
-    errEl.textContent = 'Network error. Please try again.';
+    errEl.textContent = 'Unable to reach the server. Please check your connection and try again.';
     errEl.style.display = 'block';
   } finally {
     btn.disabled = false;
@@ -236,7 +276,7 @@ function updateUsageBadge(user) {
 /* ===== AUTH / LOGIN STATE (kept for compatibility) ===== */
 async function checkLoginState() {
   try {
-    const res = await fetch('/api/user');
+    const res  = await _fetchWithRetry('/api/user', {}, 3, 1500);
     const data = await res.json();
     updateAuthHeader(data);
     if (data.logged_in) updateUsageBadge(data);

@@ -539,6 +539,37 @@ def _enforce_paper_specs(paper, question_types):
         target_marks = spec['marks']
         questions    = section.get('questions', [])
 
+        # ── Fix section instructions (AI often writes wrong marks there) ──────
+        mf = int(target_marks) if target_marks == int(target_marks) else target_marks
+        mw = f"{mf} mark{'s' if target_marks != 1 else ''}"
+        _INST_MAP = {
+            'mcq':              f"Choose the correct option. Each question carries {mw}.",
+            'assertion_reason': f"Select the correct assertion-reason combination. Each carries {mw}.",
+            'true_false':       f"State whether the following are True or False. Each carries {mw}.",
+            'fill_blank':       f"Fill in the blanks with appropriate words. Each carries {mw}.",
+            'match':            f"Match Column A with Column B. Each question carries {mw}.",
+            'short_answer':     f"Answer the following questions briefly. Each carries {mw}.",
+            'long_answer':      f"Answer the following questions in detail. Each carries {mw}.",
+            'reading_passage':  "Read the following passage carefully and answer the questions that follow.",
+            'reading_poem':     "Read the following poem carefully and answer the questions that follow.",
+            'grammar':          f"Attempt the following grammar exercises. Each carries {mw}.",
+            'writing':          f"Attempt the following writing task. It carries {mw}.",
+            'literature_short': f"Answer the following questions briefly. Each carries {mw}.",
+            'literature_long':  f"Answer the following questions in detail. Each carries {mw}.",
+            'diagram':          f"Draw neat, labelled diagrams as required. Each carries {mw}.",
+            'numerical':        f"Solve the following numerical problems. Each carries {mw}.",
+            'source_based':     f"Study the source carefully and answer the questions. Each carries {mw}.",
+            'map_work':         f"On the outline map provided, locate and label as directed. Each carries {mw}.",
+            'chemical_eq':      f"Balance or write the required chemical equations. Each carries {mw}.",
+            'practical':        f"Answer the following practical-based questions. Each carries {mw}.",
+            'program':          f"Write programs as required. Each carries {mw}.",
+            'output':           f"Write the output for the following code. Each carries {mw}.",
+            'error':            f"Find and correct the errors in the following. Each carries {mw}.",
+        }
+        section['instructions'] = _INST_MAP.get(
+            sec_type, f"Attempt all questions. Each carries {mw}."
+        )
+
         for q in questions:
             # ── Enforce marks ──────────────────────────────────────────────────
             q['marks'] = target_marks
