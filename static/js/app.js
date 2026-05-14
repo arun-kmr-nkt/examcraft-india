@@ -346,10 +346,14 @@ async function loadBoards() {
 function onBoardChange() {
   state.board = document.getElementById('board').value;
   onClassChange();
+  // Refresh question types if a subject is already picked
+  const sub = document.getElementById('subject').value;
+  if (sub) loadQuestionTypes(sub);
 }
 
 async function onClassChange() {
   const classNum = document.getElementById('class_num').value;
+  state.classNum = classNum;
   const board    = state.board || document.getElementById('board').value || '';
   const subjSel  = document.getElementById('subject');
   console.log('[ExamCraft] onClassChange board=' + board + ' class=' + classNum);
@@ -379,6 +383,10 @@ async function onClassChange() {
       subjSel.appendChild(opt);
     });
     subjSel.disabled = false;
+
+    // If a subject was already selected, refresh question types for the new class
+    const currentSub = subjSel.value;
+    if (currentSub) loadQuestionTypes(currentSub);
   } catch (e) {
     subjSel.innerHTML = '<option value="">Error loading subjects</option>';
     subjSel.disabled = false;
@@ -742,11 +750,14 @@ const QT_ICONS = {
 };
 
 async function loadQuestionTypes(subject) {
+  const board    = state.board    || document.getElementById('board').value    || '';
+  const classNum = state.classNum || document.getElementById('class_num').value || '';
   const grid = document.getElementById('qt-grid');
-  grid.innerHTML = `<div class="loading-chapters">Loading question types for ${escapeHtml(subject)}...</div>`;
+  grid.innerHTML = `<div class="loading-chapters">Loading question types for ${escapeHtml(subject)}…</div>`;
 
   try {
-    const res = await fetch(`/api/question-types?subject=${encodeURIComponent(subject)}`);
+    const params = new URLSearchParams({ subject, board, class_num: classNum });
+    const res  = await fetch(`/api/question-types?${params}`);
     const data = await res.json();
     renderQuestionTypeCards(data.types || data.question_types || []);
   } catch (e) {
@@ -956,12 +967,20 @@ function renderQuestionPaper(paper) {
 
   let html = `<div class="qp-header">`;
 
-  // School logo + name
-  if (state.schoolLogoDataUrl) {
-    html += `<div class="qp-school-logo-wrap"><img src="${state.schoolLogoDataUrl}" alt="School Logo" class="qp-school-logo" /></div>`;
-  }
-  if (state.schoolName) {
-    html += `<div class="qp-school-name">${escapeHtml(state.schoolName)}</div>`;
+  // School branding: logo + name side-by-side when both present, else centered
+  const _hasLogo = !!state.schoolLogoDataUrl;
+  const _hasName = !!state.schoolName;
+  if (_hasLogo || _hasName) {
+    if (_hasLogo && _hasName) {
+      html += `<div class="qp-branding-row">`;
+      html += `<div class="qp-branding-logo"><img src="${state.schoolLogoDataUrl}" alt="School Logo" class="qp-school-logo" /></div>`;
+      html += `<div class="qp-branding-text"><div class="qp-school-name">${escapeHtml(state.schoolName)}</div></div>`;
+      html += `</div>`;
+    } else if (_hasLogo) {
+      html += `<div class="qp-branding-center"><img src="${state.schoolLogoDataUrl}" alt="School Logo" class="qp-school-logo" /></div>`;
+    } else {
+      html += `<div class="qp-school-name">${escapeHtml(state.schoolName)}</div>`;
+    }
   }
 
   html += `

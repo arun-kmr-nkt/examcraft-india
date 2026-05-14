@@ -753,15 +753,33 @@ body {
   margin-bottom: 1.5rem;
 }
 
-.qp-school-logo-wrap { margin-bottom: 0.5rem; }
-.qp-school-logo { max-height: 72px; max-width: 200px; object-fit: contain; }
+/* ── School branding block (logo + name) ─────────────────────────────── */
+.qp-branding-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+.qp-branding-logo { flex-shrink: 0; }
+.qp-branding-text { text-align: left; }
+.qp-branding-center { margin-bottom: 0.5rem; }
+
+.qp-school-logo {
+  max-height: 76px;
+  max-width: 110px;
+  object-fit: contain;
+  display: block;
+}
+
 .qp-school-name {
-  font-size: 1.15rem;
-  font-weight: 700;
+  font-size: 1.18rem;
+  font-weight: 800;
   color: var(--text-primary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 0.25rem;
+  letter-spacing: 0.6px;
+  line-height: 1.25;
+  margin-bottom: 0.15rem;
 }
 
 .qp-school { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.25rem; }

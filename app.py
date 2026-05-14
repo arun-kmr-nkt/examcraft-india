@@ -402,10 +402,18 @@ def gemini_generate(client, contents, config, max_retries=3):
     raise last_err   # all models exhausted
 
 
+# Valid characters that may follow a backslash inside a JSON string
+_VALID_JSON_ESC = frozenset('"\\/ bfnrtu')
+
+
 def _fix_json_strings(text):
-    """Walk the raw text character-by-character and escape any bare control
-    characters (newline, tab, carriage-return) that appear inside JSON string
-    values. This is the most common cause of JSONDecodeError from AI responses."""
+    """Walk the raw text character-by-character and fix problems inside JSON
+    string values:
+      1. Bare control characters (newline, tab, CR) → proper escape sequences.
+      2. Invalid escape sequences (e.g. \\p, \\m, \\s from LaTeX-style notation)
+         → double the backslash so they become valid literal backslashes.
+    This covers both the original 'unescaped control char' error and the newer
+    'Invalid \\escape' error produced by Gemini's math/science output."""
     result = []
     in_string = False
     i = 0
@@ -413,10 +421,17 @@ def _fix_json_strings(text):
         c = text[i]
         if in_string:
             if c == '\\' and i + 1 < len(text):
-                # Already-escaped sequence — copy both chars verbatim
-                result.append(c)
-                i += 1
-                result.append(text[i])
+                nxt = text[i + 1]
+                if nxt in _VALID_JSON_ESC:
+                    # Valid escape sequence — copy both chars verbatim
+                    result.append(c)
+                    i += 1
+                    result.append(text[i])
+                else:
+                    # Invalid escape (e.g. \p, \m, \s, \f used as LaTeX) —
+                    # escape the backslash so the char after it is kept as-is
+                    result.append('\\\\')
+                    # Do NOT advance i; the loop will handle nxt on the next pass
             elif c == '"':
                 in_string = False
                 result.append(c)
@@ -1447,10 +1462,66 @@ def delete_custom_chapter(chapter_id):
     return jsonify({'success': True})
 
 
+def _get_question_types(subject, class_num, board='CBSE'):
+    """Return question-type list filtered/adjusted for the given class and board.
+
+    Class groupings:
+      Primary   (1–5)  : only simple types; no derivations/assertion-reason
+      Middle    (6–8)  : most types; remove assertion-reason, advanced practicals
+      Secondary (9–10) : full list; assertion-reason enabled only for CBSE/ICSE
+      Senior   (11–12) : full list unchanged
+    """
+    try:
+        cls = int(class_num)
+    except (ValueError, TypeError):
+        cls = 10  # safe default
+
+    base = list(SUBJECT_QUESTION_TYPES.get(subject) or SUBJECT_QUESTION_TYPES.get('_default', []))
+
+    # ── Primary (Classes 1–5) ────────────────────────────────────────────────
+    if cls <= 5:
+        PRIMARY_OK = {'mcq', 'fill_blank', 'true_false', 'match',
+                      'short_answer', 'drawing', 'observation', 'long_answer'}
+        filtered = [t for t in base if t['key'] in PRIMARY_OK]
+        if not filtered:
+            filtered = base[:4]
+        # Reduce question counts for young learners
+        result = []
+        for t in filtered:
+            td = dict(t)
+            td['default_count'] = max(2, t.get('default_count', 5) - 3)
+            td['enabled'] = t.get('enabled', True)
+            result.append(td)
+        return result
+
+    # ── Middle School (Classes 6–8) ──────────────────────────────────────────
+    MIDDLE_EXCL = {'assertion_reason', 'source_analysis', 'cartoon', 'timeline',
+                   'data_interpretation', 'practical'}
+    if cls <= 8:
+        return [t for t in base if t['key'] not in MIDDLE_EXCL]
+
+    # ── Secondary (Classes 9–10) ─────────────────────────────────────────────
+    if cls <= 10:
+        CBSE_ICSE = {'CBSE', 'ICSE/ISC (CISCE)'}
+        result = []
+        for t in base:
+            td = dict(t)
+            # Assertion-Reason is part of CBSE/ICSE 9-10 pattern; disable for others
+            if td['key'] == 'assertion_reason' and board not in CBSE_ICSE:
+                td['enabled'] = False
+            result.append(td)
+        return result
+
+    # ── Senior Secondary (Classes 11–12) ─────────────────────────────────────
+    return base
+
+
 @app.route('/api/question-types', methods=['GET'])
 def get_question_types():
-    subject = request.args.get('subject', '')
-    types   = SUBJECT_QUESTION_TYPES.get(subject) or SUBJECT_QUESTION_TYPES.get('_default', [])
+    subject   = request.args.get('subject', '')
+    class_num = request.args.get('class_num', '10')
+    board     = request.args.get('board', 'CBSE')
+    types     = _get_question_types(subject, class_num, board)
     return jsonify({'question_types': types})
 
 
@@ -1689,8 +1760,8 @@ def generate_paper():
                 continue
             marks      = cfg.get('marks', 1)
             sec_letter = section_letters[sec_index] if sec_index < len(section_letters) else str(sec_index + 1)
-            # Get the human-readable label from SUBJECT_QUESTION_TYPES
-            all_types  = SUBJECT_QUESTION_TYPES.get(subject, SUBJECT_QUESTION_TYPES['_default'])
+            # Get the human-readable label using the board/class-aware helper
+            all_types  = _get_question_types(subject, class_num, board)
             type_label = next((t['label'] for t in all_types if t['key'] == key), key.replace('_', ' ').title())
             description= QUESTION_TYPE_DESCRIPTIONS.get(key, type_label)
             sections_desc.append(
@@ -2045,6 +2116,7 @@ def download_word():
         from docx import Document
         from docx.shared import Pt, Inches, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
         from docx.oxml.ns import qn
         from docx.oxml import OxmlElement
 
@@ -2126,23 +2198,61 @@ def download_word():
             pBdr.append(bottom)
             pPr.append(pBdr)
 
-        # ── Header ────────────────────────────────────────────────────────────
-        # School logo (if provided as base64)
+        # ── Header — school branding ──────────────────────────────────────────
+        # Decode logo once (used below)
+        _logo_buf = None
         if school_logo_b64:
             try:
                 import base64 as _b64
-                logo_data = _b64.b64decode(school_logo_b64.split(',', 1)[-1])
-                logo_buf = io.BytesIO(logo_data)
-                logo_p = doc.add_paragraph()
-                logo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                logo_p.paragraph_format.space_after = Pt(4)
-                logo_run = logo_p.add_run()
-                logo_run.add_picture(logo_buf, height=Inches(0.8))
+                _logo_data = _b64.b64decode(school_logo_b64.split(',', 1)[-1])
+                _logo_buf  = io.BytesIO(_logo_data)
             except Exception:
-                pass  # skip logo if decode/insert fails
+                _logo_buf = None  # skip logo if decode fails
 
-        # School name
-        if school_name:
+        if _logo_buf and school_name:
+            # Side-by-side: logo left (≈20% width) | school name right (≈80%)
+            tbl = doc.add_table(rows=1, cols=2)
+            tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+            # Remove all table borders
+            def _no_border(cell):
+                tc   = cell._tc
+                tcPr = tc.get_or_add_tcPr()
+                tcBorders = OxmlElement('w:tcBorders')
+                for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+                    b = OxmlElement(f'w:{side}')
+                    b.set(qn('w:val'), 'nil')
+                    tcBorders.append(b)
+                tcPr.append(tcBorders)
+            _no_border(tbl.cell(0, 0))
+            _no_border(tbl.cell(0, 1))
+            # Set column widths (page ≈ 6 inches usable)
+            tbl.columns[0].width = Inches(1.1)
+            tbl.columns[1].width = Inches(4.9)
+            # Logo in left cell
+            logo_cell = tbl.cell(0, 0)
+            logo_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            lp = logo_cell.paragraphs[0]
+            lp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            lp.paragraph_format.space_after = Pt(0)
+            lr = lp.add_run()
+            lr.add_picture(_logo_buf, height=Inches(0.75))
+            # School name in right cell
+            name_cell = tbl.cell(0, 1)
+            name_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            np_ = name_cell.paragraphs[0]
+            np_.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            np_.paragraph_format.space_after = Pt(0)
+            nr = np_.add_run(school_name.upper())
+            nr.bold = True
+            nr.font.size = Pt(14)
+            nr.font.color.rgb = RGBColor(26, 32, 44)
+            doc.add_paragraph().paragraph_format.space_after = Pt(2)
+        elif _logo_buf:
+            logo_p = doc.add_paragraph()
+            logo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            logo_p.paragraph_format.space_after = Pt(4)
+            logo_p.add_run().add_picture(_logo_buf, height=Inches(0.8))
+        elif school_name:
             add_para(school_name.upper(),
                      bold=True, size=14, align=WD_ALIGN_PARAGRAPH.CENTER,
                      space_after=2, color=(26, 32, 44))
