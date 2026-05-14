@@ -1499,6 +1499,25 @@ body {
   line-height: 1.8;
 }
 
+.qp-subq li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.qp-subq-marks {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--gradient-soft);
+  padding: 0.05rem 0.45rem;
+  border-radius: 20px;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
 .qp-map-hint {
   display: inline-block;
   margin-top: 0.35rem;

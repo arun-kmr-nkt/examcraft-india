@@ -420,7 +420,55 @@ function gotoStep(step) {
   });
 
   state.currentStep = step;
+
+  // When returning to step 3 (e.g. "← Regenerate"), restore the user's
+  // last question-type configuration so the counts/marks are preserved.
+  if (step === 3) _restoreQuestionTypeInputs();
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/**
+ * Re-apply state.questionTypes back onto the rendered QT cards.
+ * Called whenever we navigate (back) to step 3 after a paper has been generated.
+ * If state.questionTypes is empty (first visit) this is a no-op.
+ */
+function _restoreQuestionTypeInputs() {
+  const qt = state.questionTypes;
+  if (!qt || Object.keys(qt).length === 0) return;
+
+  document.querySelectorAll('.qt-card[data-key]').forEach(card => {
+    const key      = card.dataset.key;
+    const enableEl = document.getElementById(`enable-${key}`);
+    const inputsDiv= document.getElementById(`inputs-${key}`);
+    if (!enableEl) return;
+
+    const saved = qt[key];  // present only if that type was enabled last time
+    if (saved) {
+      // Re-enable the card
+      enableEl.checked = true;
+      card.classList.add('active');
+      if (inputsDiv) {
+        inputsDiv.classList.remove('disabled');
+        inputsDiv.querySelectorAll('input').forEach(inp => inp.disabled = false);
+      }
+      // Restore count & marks
+      const countEl = document.getElementById(`${key}-count`);
+      const marksEl = document.getElementById(`${key}-marks`);
+      if (countEl) countEl.value = saved.count;
+      if (marksEl) marksEl.value = saved.marks;
+    } else {
+      // This type was not enabled last time — keep it unchecked
+      enableEl.checked = false;
+      card.classList.remove('active');
+      if (inputsDiv) {
+        inputsDiv.classList.add('disabled');
+        inputsDiv.querySelectorAll('input').forEach(inp => inp.disabled = true);
+      }
+    }
+  });
+
+  updateMarksTotal();
 }
 
 /* ===== SCHOOL LOGO ===== */
@@ -808,7 +856,7 @@ function renderQuestionTypeCards(types) {
           </div>
           <div class="qt-field">
             <label>Marks Each</label>
-            <input type="number" id="${key}-marks" value="${defaultMarks}" min="1" max="20"
+            <input type="number" id="${key}-marks" value="${defaultMarks}" min="0.5" max="20" step="0.5"
                    onchange="updateMarksTotal()" ${defaultEnabled ? '' : 'disabled'} />
           </div>
           <div class="qt-total">= <span id="${key}-total">${defaultTotal}</span> marks</div>
@@ -834,6 +882,11 @@ function toggleQType(key) {
 }
 
 /* ===== MARKS TOTAL (dynamic — works with any set of qt cards) ===== */
+function _fmtNum(n) {
+  // Display a number cleanly: integer → "5", float → "1.5"
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
 function updateMarksTotal() {
   let total = 0;
 
@@ -845,38 +898,42 @@ function updateMarksTotal() {
       if (el) el.textContent = '0';
       return;
     }
-    const count = parseInt(document.getElementById(`${key}-count`)?.value || '0');
-    const marks = parseInt(document.getElementById(`${key}-marks`)?.value || '0');
+    const count    = parseInt(document.getElementById(`${key}-count`)?.value  || '0');
+    const marks    = parseFloat(document.getElementById(`${key}-marks`)?.value || '0');
     const subtotal = count * marks;
     total += subtotal;
     const el = document.getElementById(`${key}-total`);
-    if (el) el.textContent = subtotal;
+    if (el) el.textContent = _fmtNum(subtotal);
   });
 
-  document.getElementById('marks-counter').textContent = total;
-  const target = state.totalMarks;
-  const statusEl = document.getElementById('marks-status');
+  // Round to avoid floating-point noise (e.g. 0.1+0.2 = 0.30000000000000004)
+  total = Math.round(total * 100) / 100;
 
-  if (total === target) {
+  document.getElementById('marks-counter').textContent = _fmtNum(total);
+  const target    = state.totalMarks;
+  const statusEl  = document.getElementById('marks-status');
+  const diff      = Math.round((total - target) * 100) / 100;
+
+  if (Math.abs(diff) < 0.001) {
     statusEl.textContent = '✓ Matches target';
-    statusEl.className = 'marks-ok';
-  } else if (total > target) {
-    statusEl.textContent = `▲ ${total - target} over target`;
-    statusEl.className = 'marks-over';
+    statusEl.className   = 'marks-ok';
+  } else if (diff > 0) {
+    statusEl.textContent = `▲ ${_fmtNum(diff)} over target`;
+    statusEl.className   = 'marks-over';
   } else {
-    statusEl.textContent = `▼ ${target - total} under target`;
-    statusEl.className = 'marks-under';
+    statusEl.textContent = `▼ ${_fmtNum(-diff)} under target`;
+    statusEl.className   = 'marks-under';
   }
 }
 
 function collectQuestionTypes() {
   const result = {};
   document.querySelectorAll('.qt-card[data-key]').forEach(card => {
-    const key = card.dataset.key;
+    const key     = card.dataset.key;
     const enabled = document.getElementById(`enable-${key}`)?.checked;
     if (!enabled) return;
-    const count = parseInt(document.getElementById(`${key}-count`)?.value || '0');
-    const marks = parseInt(document.getElementById(`${key}-marks`)?.value || '0');
+    const count = parseInt(document.getElementById(`${key}-count`)?.value  || '0');
+    const marks = parseFloat(document.getElementById(`${key}-marks`)?.value || '0');
     if (count > 0) result[key] = { count, marks };
   });
   return result;
@@ -1073,7 +1130,15 @@ function renderQuestionPaper(paper) {
         }
         if (q.sub_questions && q.sub_questions.length > 0) {
           qBody += '<ol class="qp-subq">';
-          q.sub_questions.forEach(sq => { qBody += `<li>${formatFormula(sq)}</li>`; });
+          q.sub_questions.forEach((sq, sqIdx) => {
+            const sqText  = (typeof sq === 'object' && sq !== null) ? (sq.text || '') : String(sq);
+            const sqMarks = (typeof sq === 'object' && sq !== null && sq.marks != null)
+                            ? sq.marks : null;
+            const marksTag = sqMarks != null
+              ? ` <span class="qp-subq-marks">[${_fmtNum(sqMarks)} mark${sqMarks === 1 ? '' : 's'}]</span>`
+              : '';
+            qBody += `<li>${formatFormula(sqText)}${marksTag}</li>`;
+          });
           qBody += '</ol>';
         }
       } else {
@@ -1082,7 +1147,14 @@ function renderQuestionPaper(paper) {
 
       qBody += `</div>`;
       html += qBody;
-      html += `<span class="qp-q-marks">[${q.marks || 1} mark${(q.marks || 1) > 1 ? 's' : ''}]</span>`;
+      const _qm    = q.marks != null ? q.marks : 1;
+      const _qmStr = _fmtNum(_qm);
+      const _isPassage = (type === 'reading_passage' || type === 'reading_poem');
+      if (_isPassage) {
+        html += `<span class="qp-q-marks">[Total: ${_qmStr} marks]</span>`;
+      } else {
+        html += `<span class="qp-q-marks">[${_qmStr} mark${_qm === 1 ? '' : 's'}]</span>`;
+      }
       html += `<button class="q-edit-btn" onclick="editQuestion(${secIdx},${qIdx})" title="Edit question">&#9998;</button>`;
       html += `</div></div>`;
       globalQNum++;

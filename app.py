@@ -507,6 +507,81 @@ def extract_json(text):
     return json.loads(fully_fixed)   # let this raise if still broken
 
 
+def _enforce_paper_specs(paper, question_types):
+    """Post-process AI output to enforce exact question counts, exact marks per
+    question, and well-formed passage sub-questions.
+
+    For every section whose type matches a teacher-configured question type:
+      • Sets q['marks'] to the exact teacher-specified value on every question.
+      • Trims the question list to the requested count if AI over-generated.
+      • For reading_passage / reading_poem: ensures sub_questions are objects
+        with 'text' and 'marks' fields and that their marks are distributed so
+        they sum to the section total.
+    """
+    if not paper or not isinstance(paper.get('sections'), list):
+        return paper
+
+    # Build lookup:  type_key → {count, marks}
+    qt_spec: dict = {}
+    for key, cfg in (question_types or {}).items():
+        c = int(cfg.get('count', 0))
+        m = float(cfg.get('marks', 1))
+        if c > 0:
+            qt_spec[key] = {'count': c, 'marks': m}
+
+    for section in paper['sections']:
+        sec_type = section.get('type', '')
+        spec = qt_spec.get(sec_type)
+        if not spec:
+            continue
+
+        target_count = spec['count']
+        target_marks = spec['marks']
+        questions    = section.get('questions', [])
+
+        for q in questions:
+            # ── Enforce marks ──────────────────────────────────────────────────
+            q['marks'] = target_marks
+
+            # ── Passage sub-questions ──────────────────────────────────────────
+            if sec_type in ('reading_passage', 'reading_poem'):
+                subs = q.get('sub_questions') or []
+                if subs:
+                    # Normalise to list of {'text': ..., 'marks': ...} dicts
+                    normalised = []
+                    for s in subs:
+                        if isinstance(s, dict):
+                            normalised.append({
+                                'text':  s.get('text', str(s)),
+                                'marks': float(s.get('marks', 1)),
+                            })
+                        else:
+                            normalised.append({'text': str(s), 'marks': 0.0})
+
+                    # Distribute target_marks across sub-questions
+                    n = len(normalised)
+                    # If they already have explicit per-sub marks, keep relative weights
+                    raw_total = sum(s['marks'] for s in normalised)
+                    if raw_total > 0:
+                        for s in normalised:
+                            s['marks'] = round(s['marks'] / raw_total * target_marks * 2) / 2
+                            s['marks'] = max(0.5, s['marks'])
+                    else:
+                        # All zero / plain strings — distribute evenly
+                        per_sub = round(target_marks / n * 2) / 2
+                        per_sub = max(0.5, per_sub)
+                        for s in normalised:
+                            s['marks'] = per_sub
+
+                    q['sub_questions'] = normalised
+
+        # ── Trim excess questions ──────────────────────────────────────────────
+        if len(questions) > target_count:
+            section['questions'] = questions[:target_count]
+
+    return paper
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -2589,21 +2664,30 @@ def generate_paper():
         sections_desc = []
         section_letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
         sec_index = 0
+        total_q_count = 0
+        q_num_start = 1  # running Q-ID counter for explicit range hints
+        # Resolve question types once for label lookup
+        _all_qt_for_label = _get_question_types(subject, class_num, board)
         for key, cfg in question_types.items():
             count = cfg.get('count', 0)
             if count <= 0:
                 continue
-            marks      = cfg.get('marks', 1)
+            marks      = float(cfg.get('marks', 1))
             sec_letter = section_letters[sec_index] if sec_index < len(section_letters) else str(sec_index + 1)
-            # Get the human-readable label using the board/class-aware helper
-            all_types  = _get_question_types(subject, class_num, board)
-            type_label = next((t['label'] for t in all_types if t['key'] == key), key.replace('_', ' ').title())
+            type_label = next((t['label'] for t in _all_qt_for_label if t['key'] == key), key.replace('_', ' ').title())
             description= QUESTION_TYPE_DESCRIPTIONS.get(key, type_label)
+            marks_fmt  = int(marks) if marks == int(marks) else marks
+            total_sec  = count * marks
+            total_sec_fmt = int(total_sec) if total_sec == int(total_sec) else total_sec
+            q_num_end  = q_num_start + count - 1
+            q_range    = f"Q{q_num_start}" if count == 1 else f"Q{q_num_start}–Q{q_num_end}"
             sections_desc.append(
                 f"Section {sec_letter} – {type_label} ({description}): "
-                f"{count} question(s) × {marks} mark(s) each = {count * marks} marks"
+                f"EXACTLY {count} question(s) [{q_range}] × {marks_fmt} mark(s) each = {total_sec_fmt} marks"
             )
-            sec_index += 1
+            sec_index     += 1
+            total_q_count += count
+            q_num_start    = q_num_end + 1
 
         chapters_str = ', '.join(chapters) if chapters else 'All chapters'
 
@@ -2643,6 +2727,8 @@ INSTRUCTIONS FOR GENERATION:
 7. Include proper general instructions at the top
 8. Add complete answer key at the end
 9. Use ^{{text}} for superscripts (e.g., x^{{2}}) and _{{text}} for subscripts (e.g., H_{{2}}O). Do NOT use LaTeX backslash commands (no \\frac, \\sqrt, \\times etc.). Write fractions as a/b, roots as sqrt(x), and use Unicode symbols (×, ÷, ≥, ≤, π, √) directly.
+10. CRITICAL — EXACT QUESTION COUNT: You MUST generate EXACTLY the number of questions specified for each section (see QUESTION PAPER STRUCTURE above). No more, no fewer. The total across all sections must be exactly {total_q_count} questions. Count each question carefully before finalising the JSON.
+11. For reading_passage and reading_poem sections: sub_questions MUST be a JSON array of objects — each object must have a "text" field (string) and a "marks" field (number). Do NOT use plain strings. The marks values across all sub_questions should sum to the section's marks-per-question. Example: "sub_questions": [{{"text": "What is the central theme of the passage?", "marks": 2}}, {{"text": "Why did the author use this metaphor? Explain.", "marks": 3}}]
 
 CRITICAL JSON RULES (the output must be valid JSON):
 - Do NOT use double-quote characters (") inside any string value. Use single quotes or rephrase.
@@ -2694,7 +2780,7 @@ Return ONLY a valid JSON object (no markdown, no explanation, no text before or 
   ]
 }}
 
-Generate all questions as specified. Make them appropriate for Class {class_num} {subject} {board} students."""
+Generate ALL {total_q_count} questions exactly as specified above. Each section must contain EXACTLY the number of questions stated — do not add extra questions, do not omit any. Make every question appropriate for Class {class_num} {subject} {board} students."""
 
         # Build Gemini content: images first, then the prompt text
         contents = pil_images + [prompt_text]
@@ -2723,6 +2809,9 @@ Generate all questions as specified. Make them appropriate for Class {class_num}
                 'error': f'Failed to parse generated paper: {str(e)}',
                 'raw_preview': response_text[:500],
             }), 500
+
+        # Enforce exact counts, marks, and passage sub-question structure
+        paper_json = _enforce_paper_specs(paper_json, question_types)
 
         session['question_paper'] = paper_json
 
