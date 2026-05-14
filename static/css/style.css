@@ -1491,31 +1491,47 @@ body {
   white-space: pre-wrap;
 }
 
-.qp-subq {
-  margin-top: 0.6rem;
-  padding-left: 1.5rem;
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  line-height: 1.8;
+/* "Answer the following questions:" hint above sub-questions */
+.qp-subq-label {
+  margin-top: 0.55rem;
+  font-size: 0.88rem;
+  font-style: italic;
+  color: var(--text-muted);
 }
 
-.qp-subq li {
+/* Sub-question rows — rendered as siblings of .qp-question-row so that their
+   marks column occupies the SAME horizontal position as .qp-q-marks above.
+   Layout mirrors .qp-question-row:
+     [indent to text-col] [sub-num] [gap] [text flex-1] [gap] [marks] [spacer≈edit-btn] */
+.qp-subq-row {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
+  gap: 0.75rem;
+  align-items: flex-start;
+  /* indent: qp-q-num min-width (36px) + row gap (0.75rem) */
+  padding-left: calc(36px + 0.75rem);
+  margin-top: 0.55rem;
 }
 
-.qp-subq-marks {
+.qp-subq-num {
   flex-shrink: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
+  min-width: 2.4rem;   /* wide enough for "(viii)" */
+  font-weight: 700;
   color: var(--primary);
-  background: var(--gradient-soft);
-  padding: 0.05rem 0.45rem;
-  border-radius: 20px;
-  white-space: nowrap;
-  margin-left: auto;
+  font-size: 0.9rem;
+}
+
+.qp-subq-text {
+  flex: 1;
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+/* Matches the invisible space taken by .q-edit-btn so the marks labels
+   in sub-rows align with .qp-q-marks in the main question row */
+.qp-subq-spacer {
+  flex-shrink: 0;
+  width: calc(1rem + 0.5rem);  /* ~font-size + padding of .q-edit-btn */
 }
 
 .qp-map-hint {

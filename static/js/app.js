@@ -887,6 +887,18 @@ function _fmtNum(n) {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
 }
 
+/** Convert 1→i, 2→ii, 3→iii … (lowercase Roman numerals for sub-questions) */
+function _toRoman(n) {
+  if (n < 1) return String(n);
+  const vals = [1, 4, 5, 9, 10, 40, 50, 90, 100];
+  const syms = ['i','iv','v','ix','x','xl','l','xc','c'];
+  let r = '';
+  for (let i = vals.length - 1; i >= 0; i--) {
+    while (n >= vals[i]) { r += syms[i]; n -= vals[i]; }
+  }
+  return r;
+}
+
 function updateMarksTotal() {
   let total = 0;
 
@@ -1090,8 +1102,13 @@ function renderQuestionPaper(paper) {
     `;
 
     (section.questions || []).forEach((q, qIdx) => {
-      const type = section.type;
-      html += `<div class="qp-question"><div class="qp-question-row">`;
+      const type       = section.type;
+      const _isPassage = (type === 'reading_passage' || type === 'reading_poem');
+
+      // Open question wrapper — NOTE: qp-question-row is closed separately
+      // so passage sub-question rows can be inserted as siblings inside qp-question.
+      html += `<div class="qp-question">`;
+      html += `<div class="qp-question-row">`;
       html += `<span class="qp-q-num">${globalQNum}.</span>`;
 
       let qBody = `<div class="qp-q-text" id="qtext-${secIdx}-${qIdx}">`;
@@ -1123,40 +1140,52 @@ function renderQuestionPaper(paper) {
         qBody += formatFormula(q.text || '') + ' &nbsp; <strong>[True / False]</strong>';
       } else if (type === 'map_work') {
         qBody += formatFormula(q.text || '') + '<div class="qp-map-hint">[Refer to outline map provided]</div>';
-      } else if (type === 'reading_passage' || type === 'reading_poem') {
+      } else if (_isPassage) {
+        // Passage text + passage box only — sub-questions rendered as sibling rows below
         qBody += formatFormula(q.text || '');
         if (q.passage) {
           qBody += `<div class="qp-passage">${escapeHtml(q.passage)}</div>`;
         }
         if (q.sub_questions && q.sub_questions.length > 0) {
-          qBody += '<ol class="qp-subq">';
-          q.sub_questions.forEach((sq, sqIdx) => {
-            const sqText  = (typeof sq === 'object' && sq !== null) ? (sq.text || '') : String(sq);
-            const sqMarks = (typeof sq === 'object' && sq !== null && sq.marks != null)
-                            ? sq.marks : null;
-            const marksTag = sqMarks != null
-              ? ` <span class="qp-subq-marks">[${_fmtNum(sqMarks)} mark${sqMarks === 1 ? '' : 's'}]</span>`
-              : '';
-            qBody += `<li>${formatFormula(sqText)}${marksTag}</li>`;
-          });
-          qBody += '</ol>';
+          qBody += `<div class="qp-subq-label">Answer the following questions:</div>`;
         }
       } else {
         qBody += formatFormula(q.text || '');
       }
 
-      qBody += `</div>`;
+      qBody += `</div>`;  // close qp-q-text
       html += qBody;
+
+      // Marks label + edit button (right side of main row)
       const _qm    = q.marks != null ? q.marks : 1;
       const _qmStr = _fmtNum(_qm);
-      const _isPassage = (type === 'reading_passage' || type === 'reading_poem');
       if (_isPassage) {
         html += `<span class="qp-q-marks">[Total: ${_qmStr} marks]</span>`;
       } else {
         html += `<span class="qp-q-marks">[${_qmStr} mark${_qm === 1 ? '' : 's'}]</span>`;
       }
       html += `<button class="q-edit-btn" onclick="editQuestion(${secIdx},${qIdx})" title="Edit question">&#9998;</button>`;
-      html += `</div></div>`;
+      html += `</div>`;  // close qp-question-row
+
+      // ── Sub-question rows (outside qp-question-row so marks column aligns) ──
+      if (_isPassage && q.sub_questions && q.sub_questions.length > 0) {
+        q.sub_questions.forEach((sq, sqIdx) => {
+          const sqText  = (typeof sq === 'object' && sq !== null) ? (sq.text || '') : String(sq);
+          const sqMarks = (typeof sq === 'object' && sq !== null && sq.marks != null)
+                          ? sq.marks : null;
+          const marksHtml = sqMarks != null
+            ? `<span class="qp-q-marks">[${_fmtNum(sqMarks)} mark${sqMarks === 1 ? '' : 's'}]</span>`
+            : '';
+          html += `<div class="qp-subq-row">`;
+          html += `<span class="qp-subq-num">(${_toRoman(sqIdx + 1)})</span>`;
+          html += `<div class="qp-subq-text">${formatFormula(sqText)}</div>`;
+          html += marksHtml;
+          html += `<span class="qp-subq-spacer"></span>`;  // mirrors edit-btn space
+          html += `</div>`;
+        });
+      }
+
+      html += `</div>`;  // close qp-question
       globalQNum++;
     });
 
