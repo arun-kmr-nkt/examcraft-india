@@ -2168,6 +2168,11 @@ function editQuestion(secIdx, qIdx) {
     </div>` : '';
 
   textEl.innerHTML = `
+    <div class="q-edit-header-row">
+      <span class="q-edit-header-label">&#9997; Edit Question</span>
+      <button class="btn btn-sm q-regen-btn" id="qregen-${secIdx}-${qIdx}"
+              onclick="regenerateQuestion(${secIdx},${qIdx})">&#128260; Regenerate</button>
+    </div>
     <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}"
               rows="4">${currentText.replace(/</g, '&lt;')}</textarea>
     ${mcqBlock}
@@ -2309,6 +2314,99 @@ function cancelEditQuestion() {
     (sec.questions || []).forEach(q => { delete q._pendingImage; })
   );
   renderQuestionPaper(state.questionPaper);
+}
+
+/* ===== REGENERATE SINGLE QUESTION ===== */
+async function regenerateQuestion(secIdx, qIdx) {
+  const paper = state.questionPaper;
+  if (!paper) return;
+
+  const section     = paper.sections[secIdx];
+  const q           = section.questions[qIdx];
+  const sectionType = section.type || 'short_answer';
+  const isMCQ       = (sectionType === 'mcq' || sectionType === 'assertion_reason');
+
+  const btn = document.getElementById(`qregen-${secIdx}-${qIdx}`);
+  if (btn) {
+    btn.disabled    = true;
+    btn.textContent = '⏳ Generating…';
+  }
+
+  // Collect context from the paper
+  const info        = paper.paper_info || {};
+  const subject     = info.subject || '';
+  const class_num   = info.class  || '';
+  const board       = info.board  || 'CBSE';
+  const marks       = q.marks || 1;
+  const currentText = q.text || '';
+
+  // Chapter list (stored on paper_info.chapters as a comma-separated string)
+  const chapStr  = info.chapters || '';
+  const chapters = chapStr ? chapStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  try {
+    const ctrl    = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 45000);   // 45-second timeout
+
+    const resp = await fetch('/api/regenerate-question', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ section_type: sectionType, subject, class_num, board,
+                                marks, chapters, current_text: currentText }),
+      signal:  ctrl.signal,
+    });
+    clearTimeout(timeout);
+
+    const data = await resp.json();
+
+    if (!resp.ok || data.error) {
+      showToast(data.error || 'Regeneration failed — please try again.', 'error');
+      return;
+    }
+
+    const nq = data.question;   // { text, options?, correct_answer?, answer?, explanation? }
+
+    // ── Fill the question textarea ──────────────────────────────────────────
+    const ta = document.getElementById(`qedit-${secIdx}-${qIdx}`);
+    if (ta && nq.text) ta.value = nq.text;
+
+    if (isMCQ && Array.isArray(nq.options)) {
+      // ── Fill MCQ option inputs ────────────────────────────────────────────
+      const labels = ['A', 'B', 'C', 'D'];
+      nq.options.forEach((opt, i) => {
+        const inp = document.getElementById(`qopt-${secIdx}-${qIdx}-${i}`);
+        if (inp) inp.value = String(opt).replace(/^[\(\[]?[A-Da-d][\)\]\.]\s*/i, '').trim();
+      });
+
+      // ── Pre-select correct-answer radio ────────────────────────────────────
+      const correctLetter = (nq.correct_answer || '').trim().toUpperCase().charAt(0);
+      if (correctLetter) {
+        const radio = document.querySelector(
+          `input[name="qcorrect-${secIdx}-${qIdx}"][value="${correctLetter}"]`
+        );
+        if (radio) radio.checked = true;
+      }
+    } else if (!isMCQ) {
+      // ── Fill answer textarea ──────────────────────────────────────────────
+      const ans = nq.answer || nq.explanation || '';
+      const ansTA = document.getElementById(`qanswer-${secIdx}-${qIdx}`);
+      if (ansTA && ans) ansTA.value = ans;
+    }
+
+    showToast('Question regenerated — review and save when ready.', 'success');
+
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      showToast('Regeneration timed out — please try again.', 'error');
+    } else {
+      showToast('Regeneration failed: ' + err.message, 'error');
+    }
+  } finally {
+    if (btn) {
+      btn.disabled    = false;
+      btn.textContent = '🔄 Regenerate';
+    }
+  }
 }
 
 /* ===== PRINT & DOWNLOAD ===== */

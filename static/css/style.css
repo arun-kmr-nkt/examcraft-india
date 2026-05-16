@@ -907,6 +907,37 @@ body {
 }
 .qp-question:hover .q-edit-btn { opacity: 1; }
 
+.q-edit-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+.q-edit-header-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.q-regen-btn {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1.5px solid var(--primary);
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.q-regen-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: #fff;
+}
+.q-regen-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .q-edit-textarea {
   width: 100%;
   min-height: 72px;

@@ -2931,6 +2931,13 @@ def get_subjects():
     return jsonify({'subjects': result})
 
 
+@app.route('/ping')
+def ping():
+    """Lightweight keep-alive endpoint for UptimeRobot (every 10 min).
+    No auth required — just returns 200 OK so Render never spins down."""
+    return jsonify({'status': 'ok'}), 200
+
+
 @app.route('/api/version')
 def api_version():
     """Deployment verification endpoint — shows what code is actually running."""
@@ -2944,7 +2951,7 @@ def api_version():
         except Exception:
             pass
     return jsonify({
-        'version':       '2026-05-17-v3',
+        'version':       '2026-05-17-v4',
         'primary_model': _GEMINI_MODELS[0],
         'model_chain':   _GEMINI_MODELS,
         'has_env_key':   has_env_key,
@@ -3743,6 +3750,154 @@ def generate_paper():
                    'get a free key at aistudio.google.com and update it in Settings.')
         else:
             msg = f'Generation failed: {err_str}'
+        return jsonify({'error': msg}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REGENERATE SINGLE QUESTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/regenerate-question', methods=['POST'])
+@login_required
+def regenerate_question():
+    """Generate a fresh replacement for one question in an existing paper.
+
+    Request JSON:
+        section_type : str   e.g. 'mcq', 'short_answer', 'long_answer', …
+        subject      : str   e.g. 'Mathematics'
+        class_num    : str   e.g. '8'
+        board        : str   e.g. 'CBSE'
+        marks        : int   marks allocated to this question
+        chapters     : list  chapters/topics in scope (optional)
+        current_text : str   existing question text (so we don't regenerate same)
+
+    Response JSON (success):
+        { text, options, correct_answer, explanation }   – MCQ
+        { text, answer, explanation }                    – non-MCQ
+    """
+    gemini = get_gemini_client(current_user.id)
+    if not gemini:
+        return jsonify({'error': 'No API key configured. Add your Gemini API key in Settings.'}), 500
+
+    data         = request.get_json(force=True, silent=True) or {}
+    section_type = data.get('section_type', 'short_answer').lower()
+    subject      = data.get('subject', 'General')
+    class_num    = str(data.get('class_num', '10'))
+    board        = data.get('board', 'CBSE')
+    marks        = int(data.get('marks', 1))
+    chapters     = data.get('chapters', [])
+    current_text = data.get('current_text', '').strip()
+
+    is_mcq = section_type in ('mcq', 'assertion_reason')
+    chapters_str = ', '.join(chapters) if chapters else 'All chapters'
+
+    # Pre-build brace-containing example strings (never inside f-string braces)
+    _mcq_ex = (
+        '{"text": "Which of the following is...", '
+        '"options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"], '
+        '"correct_answer": "B", '
+        '"explanation": "Because..."}'
+    )
+    _non_mcq_ex = (
+        '{"text": "Explain the process of...", '
+        '"answer": "The process involves...", '
+        '"explanation": "Key points: ..."}'
+    )
+    ex_json = _mcq_ex if is_mcq else _non_mcq_ex
+
+    avoid_line = (
+        f"IMPORTANT: Do NOT regenerate this question (create a genuinely different one):\n"
+        f"  \"{current_text}\"\n"
+    ) if current_text else ""
+
+    if is_mcq:
+        type_desc = (
+            "Multiple Choice Question (MCQ) with exactly 4 options (A, B, C, D). "
+            "Only one option must be correct."
+        )
+        output_desc = (
+            "Return ONLY a JSON object with keys: "
+            "\"text\" (string), "
+            "\"options\" (array of 4 strings each prefixed A)/B)/C)/D)), "
+            "\"correct_answer\" (single letter A/B/C/D), "
+            "\"explanation\" (string)."
+        )
+    else:
+        type_label_map = {
+            'short_answer':       'Short Answer Question',
+            'long_answer':        'Long Answer / Essay Question',
+            'fill_blank':         'Fill in the Blank',
+            'true_false':         'True or False question',
+            'match_following':    'Match the Following',
+            'assertion_reason':   'Assertion-Reason Question',
+            'case_study':         'Case Study Question',
+            'reading_passage':    'Reading Comprehension question',
+        }
+        type_desc = type_label_map.get(section_type, 'Short Answer Question')
+        output_desc = (
+            "Return ONLY a JSON object with keys: "
+            "\"text\" (string — the question), "
+            "\"answer\" (string — model answer/key), "
+            "\"explanation\" (string — brief teaching note, may be same as answer)."
+        )
+
+    prompt_text = (
+        f"You are an expert Indian school examiner for {board} Class {class_num} {subject}.\n\n"
+        f"Generate ONE fresh {type_desc} worth {marks} mark(s).\n\n"
+        f"Scope:\n"
+        f"- Board: {board}\n"
+        f"- Class: {class_num}\n"
+        f"- Subject: {subject}\n"
+        f"- Chapters/Topics: {chapters_str}\n"
+        f"- Marks: {marks}\n\n"
+        f"{avoid_line}"
+        "FORMATTING RULES:\n"
+        "- Use ^{text} for superscripts (x^{2}) and _{text} for subscripts (H_{2}O).\n"
+        "- NO LaTeX backslash commands. Write fractions as a/b, roots as sqrt(x).\n"
+        "- Use Unicode directly: ×, ÷, ±, ≤, ≥, ≠, ≈, α, β, γ, π, °, etc.\n"
+        "- NEVER use double-quote characters inside a string value.\n"
+        "- NEVER put a literal newline inside a string value.\n\n"
+        f"{output_desc}\n\n"
+        f"Example format:\n{ex_json}\n\n"
+        "Return ONLY the JSON object — no markdown, no explanation, nothing else."
+    )
+
+    _TECHNICAL = {'Mathematics', 'Physics', 'Chemistry', 'Science', 'Accountancy',
+                  'Computer Science', 'Information Technology'}
+    gen_temp = 0.2 if subject == 'Mathematics' else (0.3 if subject in _TECHNICAL else 0.6)
+
+    try:
+        response = gemini_generate(
+            gemini,
+            contents=[prompt_text],
+            config=genai_types.GenerateContentConfig(
+                max_output_tokens=1024,
+                temperature=gen_temp,
+            ),
+        )
+        raw = response.text
+
+        try:
+            result = extract_json(raw)
+        except (ValueError, json.JSONDecodeError) as e:
+            return jsonify({'error': f'Failed to parse AI response: {str(e)}',
+                            'raw_preview': raw[:300]}), 500
+
+        # Normalise: ensure expected keys exist
+        if 'text' not in result:
+            return jsonify({'error': 'AI returned no question text', 'raw_preview': raw[:300]}), 500
+
+        return jsonify({'success': True, 'question': result})
+
+    except Exception as e:
+        err_str = str(e)
+        if '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
+            msg = ('AI quota exhausted. Please wait a minute and try again, '
+                   'or add your own API key in Settings.')
+        elif '503' in err_str or 'UNAVAILABLE' in err_str:
+            msg = 'AI service temporarily busy — please retry in a few seconds.'
+        else:
+            msg = f'Regeneration failed: {err_str}'
         return jsonify({'error': msg}), 500
 
 
