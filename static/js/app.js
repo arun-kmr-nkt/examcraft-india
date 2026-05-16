@@ -2026,48 +2026,127 @@ function restorePaper(paperData, paperId) {
 }
 
 /* ===== INLINE QUESTION EDITING ===== */
+
+/** Strip "A) ", "(B) ", "C. " etc. prefix from an option string. */
+function _stripOptionPrefix(opt) {
+  return String(opt).replace(/^[\(\[]?[A-Da-d][\)\]\.]\s*/i, '').trim();
+}
+
 function editQuestion(secIdx, qIdx) {
-  const q = state.questionPaper.sections[secIdx].questions[qIdx];
+  const section     = state.questionPaper.sections[secIdx];
+  const q           = section.questions[qIdx];
+  const sectionType = section.type || '';
+  const isMCQ       = (sectionType === 'mcq' || sectionType === 'assertion_reason');
+
   const textEl = document.getElementById(`qtext-${secIdx}-${qIdx}`);
   if (!textEl) return;
+
   const currentText = q.text || '';
-  const hasImg = !!q.image_data_url;
-  const curSize = q.image_size || 60;
+  const hasImg      = !!q.image_data_url;
+  const curSize     = q.image_size || 60;
+
+  // Answer-key entry for this question
+  const qId       = q.q_id || '';
+  const akEntry   = (state.questionPaper.answer_key || []).find(a => a.q_id === qId);
+  const curAnswer = akEntry ? (akEntry.answer || '') : '';
+
+  // ── MCQ options + correct answer block ──────────────────────────────────
+  let mcqBlock = '';
+  if (isMCQ) {
+    const labels  = ['A', 'B', 'C', 'D'];
+    const opts    = q.options || [];
+    const optRows = labels.map((lbl, i) => {
+      const val = _stripOptionPrefix(opts[i] || '');
+      return `<div class="q-option-edit-row">
+        <span class="q-option-edit-label">(${lbl})</span>
+        <input type="text" class="q-option-edit-input"
+               id="qopt-${secIdx}-${qIdx}-${i}"
+               value="${escapeAttr(val)}" placeholder="Option ${lbl}…" />
+      </div>`;
+    }).join('');
+
+    // Correct-answer radio row — current answer letter pre-selected
+    const curLetter = curAnswer.trim().toUpperCase().charAt(0);
+    const radios = labels.map(lbl => `
+      <label class="q-correct-radio">
+        <input type="radio" name="qcorrect-${secIdx}-${qIdx}" value="${lbl}"
+               ${curLetter === lbl ? 'checked' : ''} />
+        <span>(${lbl})</span>
+      </label>`).join('');
+
+    mcqBlock = `
+      <div class="q-options-edit-section">
+        <div class="q-options-edit-header">
+          <span>&#9997; Answer Options</span>
+          <button class="btn btn-sm q-suggest-btn"
+                  id="qsuggest-${secIdx}-${qIdx}"
+                  onclick="suggestMCQOptions(${secIdx},${qIdx})">
+            &#129302; Auto-suggest
+          </button>
+        </div>
+        ${optRows}
+        <div class="q-suggest-hint" id="qsuggest-hint-${secIdx}-${qIdx}" style="display:none"></div>
+        <div class="q-correct-answer-row">
+          <span class="q-correct-answer-label">&#9989; Correct Answer:</span>
+          ${radios}
+        </div>
+      </div>`;
+  }
+
+  // ── Answer-key textarea (non-MCQ only) ──────────────────────────────────
+  const answerBlock = (!isMCQ && akEntry) ? `
+    <div class="q-answer-edit-row">
+      <label class="q-answer-edit-label">&#9989; Answer Key Entry
+        <span class="q-img-optional">(update if question changed)</span>
+      </label>
+      <textarea class="q-answer-edit-textarea" id="qanswer-${secIdx}-${qIdx}"
+                rows="2" placeholder="Enter correct answer…"
+      >${curAnswer.replace(/</g, '&lt;')}</textarea>
+    </div>` : '';
+
   textEl.innerHTML = `
-    <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}" rows="4">${currentText.replace(/</g,'&lt;')}</textarea>
+    <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}"
+              rows="4">${currentText.replace(/</g, '&lt;')}</textarea>
+    ${mcqBlock}
     <div class="q-img-upload-row">
       <label class="q-img-upload-label">
-        <span>&#128247; Add/replace diagram image <span class="q-img-optional">(optional)</span></span>
-        <input type="file" accept="image/*" class="q-img-file-input" id="qimg-${secIdx}-${qIdx}"
+        <span>&#128247; Add/replace diagram image
+          <span class="q-img-optional">(optional)</span>
+        </span>
+        <input type="file" accept="image/*" class="q-img-file-input"
+               id="qimg-${secIdx}-${qIdx}"
                onchange="previewQuestionImage(${secIdx},${qIdx},this)" />
       </label>
-      ${hasImg ? `<button class="btn btn-sm q-img-clear-btn" onclick="clearQuestionImage(${secIdx},${qIdx})">&#10005; Remove image</button>` : ''}
+      ${hasImg
+        ? `<button class="btn btn-sm q-img-clear-btn"
+                   onclick="clearQuestionImage(${secIdx},${qIdx})">&#10005; Remove image</button>`
+        : ''}
     </div>
     ${hasImg
-      ? `<div class="q-img-preview-wrap"><img src="${q.image_data_url}" class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>`
-      : `<div class="q-img-preview-wrap" id="qimgprev-wrap-${secIdx}-${qIdx}" style="display:none"><img class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>`}
-    <div class="q-img-size-row" id="qimgsize-wrap-${secIdx}-${qIdx}" ${hasImg ? '' : 'style="display:none"'}>
-      <span class="q-img-size-label">Image size: <strong id="qimgsize-val-${secIdx}-${qIdx}">${curSize}%</strong></span>
+      ? `<div class="q-img-preview-wrap">
+           <img src="${q.image_data_url}" class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" />
+         </div>`
+      : `<div class="q-img-preview-wrap" id="qimgprev-wrap-${secIdx}-${qIdx}" style="display:none">
+           <img class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" />
+         </div>`}
+    <div class="q-img-size-row" id="qimgsize-wrap-${secIdx}-${qIdx}"
+         ${hasImg ? '' : 'style="display:none"'}>
+      <span class="q-img-size-label">Image size:
+        <strong id="qimgsize-val-${secIdx}-${qIdx}">${curSize}%</strong>
+      </span>
       <input type="range" min="20" max="100" step="5" value="${curSize}"
              class="q-img-size-slider" id="qimgslider-${secIdx}-${qIdx}"
              oninput="document.getElementById('qimgsize-val-${secIdx}-${qIdx}').textContent=this.value+'%'" />
-      <span style="font-size:0.75rem;color:var(--text-secondary)">Small&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Large</span>
+      <span style="font-size:0.75rem;color:var(--text-secondary)">
+        Small&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Large
+      </span>
     </div>
-    ${(()=>{
-      // Find the current answer from the answer key
-      const qId = q.q_id || '';
-      const akEntry = (state.questionPaper.answer_key || []).find(a => a.q_id === qId);
-      if (!akEntry) return '';
-      const currentAnswer = akEntry.answer || '';
-      return `
-        <div class="q-answer-edit-row">
-          <label class="q-answer-edit-label">&#9989; Answer Key Entry <span class="q-img-optional">(update if question changed)</span></label>
-          <textarea class="q-answer-edit-textarea" id="qanswer-${secIdx}-${qIdx}" rows="2" placeholder="Enter correct answer...">${currentAnswer.replace(/</g,'&lt;')}</textarea>
-        </div>`;
-    })()}
+    ${answerBlock}
     <div class="q-edit-btns">
-      <button class="btn btn-primary btn-sm" onclick="saveQuestion(${secIdx},${qIdx})">&#10003; Save</button>
-      <button class="btn btn-outline btn-sm" onclick="cancelEditQuestion()">Cancel</button>
+      <button class="btn btn-primary btn-sm"
+              onclick="saveQuestion(${secIdx},${qIdx})">&#10003; Save</button>
+      <button class="btn btn-outline btn-sm"
+              onclick="cancelEditQuestion()">Cancel</button>
     </div>
   `;
   document.getElementById(`qedit-${secIdx}-${qIdx}`).focus();
@@ -2104,27 +2183,111 @@ function clearQuestionImage(secIdx, qIdx) {
 function saveQuestion(secIdx, qIdx) {
   const ta = document.getElementById(`qedit-${secIdx}-${qIdx}`);
   if (!ta) return;
-  const q = state.questionPaper.sections[secIdx].questions[qIdx];
+
+  const section     = state.questionPaper.sections[secIdx];
+  const q           = section.questions[qIdx];
+  const sectionType = section.type || '';
+  const isMCQ       = (sectionType === 'mcq' || sectionType === 'assertion_reason');
+
   q.text = ta.value.trim();
+
   // Commit any pending image
   if (q._pendingImage !== undefined) {
     q.image_data_url = q._pendingImage || '';
     delete q._pendingImage;
   }
-  // Persist image size from slider (only when image is present)
+  // Persist image size from slider
   if (q.image_data_url) {
     const slider = document.getElementById(`qimgslider-${secIdx}-${qIdx}`);
     if (slider) q.image_size = parseInt(slider.value, 10) || 60;
   }
-  // Update answer key entry if user edited the answer
-  const answerTa = document.getElementById(`qanswer-${secIdx}-${qIdx}`);
-  if (answerTa && state.questionPaper.answer_key) {
-    const qId = q.q_id || '';
-    const akEntry = state.questionPaper.answer_key.find(a => a.q_id === qId);
-    if (akEntry) akEntry.answer = answerTa.value.trim();
+
+  if (isMCQ) {
+    // Save updated options
+    const labels = ['A', 'B', 'C', 'D'];
+    q.options = labels.map((lbl, i) => {
+      const input = document.getElementById(`qopt-${secIdx}-${qIdx}-${i}`);
+      const val   = input ? input.value.trim() : '';
+      return val ? `${lbl}) ${val}` : (q.options && q.options[i] ? q.options[i] : `${lbl}) —`);
+    });
+    // Save correct answer from radio selection
+    const radio = document.querySelector(`input[name="qcorrect-${secIdx}-${qIdx}"]:checked`);
+    if (radio && state.questionPaper.answer_key) {
+      const qId     = q.q_id || '';
+      const akEntry = state.questionPaper.answer_key.find(a => a.q_id === qId);
+      if (akEntry) akEntry.answer = radio.value;
+    }
+  } else {
+    // Non-MCQ: free-text answer key update
+    const answerTa = document.getElementById(`qanswer-${secIdx}-${qIdx}`);
+    if (answerTa && state.questionPaper.answer_key) {
+      const qId     = q.q_id || '';
+      const akEntry = state.questionPaper.answer_key.find(a => a.q_id === qId);
+      if (akEntry) akEntry.answer = answerTa.value.trim();
+    }
   }
+
   renderQuestionPaper(state.questionPaper);
   showToast('Question updated!', 'success');
+}
+
+/** Call backend to auto-generate 4 MCQ options + correct answer for the typed question. */
+async function suggestMCQOptions(secIdx, qIdx) {
+  const btn      = document.getElementById(`qsuggest-${secIdx}-${qIdx}`);
+  const hintDiv  = document.getElementById(`qsuggest-hint-${secIdx}-${qIdx}`);
+  const ta       = document.getElementById(`qedit-${secIdx}-${qIdx}`);
+  if (!ta) return;
+
+  const questionText = ta.value.trim();
+  if (!questionText) {
+    showToast('Type the question first, then click Auto-suggest.', 'error');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
+  if (hintDiv) { hintDiv.style.display = 'none'; hintDiv.textContent = ''; }
+
+  try {
+    const res = await fetch('/api/suggest-options', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        question:  questionText,
+        subject:   state.subject,
+        class_num: state.classNum,
+      }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    // Fill option inputs with AI suggestions
+    const labels = ['A', 'B', 'C', 'D'];
+    labels.forEach((lbl, i) => {
+      const input = document.getElementById(`qopt-${secIdx}-${qIdx}-${i}`);
+      if (input && data.options && data.options[i]) {
+        input.value = _stripOptionPrefix(data.options[i]);
+      }
+    });
+
+    // Pre-select the correct answer radio
+    if (data.correct) {
+      const letter = data.correct.trim().toUpperCase().charAt(0);
+      const radio  = document.querySelector(
+        `input[name="qcorrect-${secIdx}-${qIdx}"][value="${letter}"]`);
+      if (radio) radio.checked = true;
+    }
+
+    // Show explanation hint
+    if (hintDiv && data.explanation) {
+      hintDiv.textContent = `💡 ${data.explanation}`;
+      hintDiv.style.display = 'block';
+    }
+    showToast('Options suggested — review and save!', 'success');
+  } catch (e) {
+    showToast('Could not suggest options. Please try again.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#129302; Auto-suggest'; }
+  }
 }
 
 function cancelEditQuestion() {

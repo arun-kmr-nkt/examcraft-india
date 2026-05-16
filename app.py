@@ -3052,6 +3052,61 @@ def save_user_profile():
 # GENERATE PAPER ROUTE
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@app.route('/api/suggest-options', methods=['POST'])
+def suggest_options():
+    """Use Gemini to suggest 4 MCQ options + correct answer for a given question text."""
+    if not current_user.is_authenticated:
+        return jsonify({'error': 'auth_required'}), 401
+
+    data         = request.get_json(force=True, silent=True) or {}
+    question_txt = (data.get('question') or '').strip()
+    subject      = (data.get('subject')  or '').strip()
+    class_num    = str(data.get('class_num') or '').strip()
+
+    if not question_txt:
+        return jsonify({'error': 'question text is required'}), 400
+
+    _gemini = get_gemini_client()
+    if not _gemini:
+        return jsonify({'error': 'AI service not configured'}), 503
+
+    try:
+        from google.generativeai import types as _gtypes
+        prompt = (
+            f"You are an expert Indian school examiner for Class {class_num} {subject}.\n\n"
+            f"Question: {question_txt}\n\n"
+            "Generate exactly 4 MCQ options (A, B, C, D) — only one correct — "
+            "and identify the correct answer.\n\n"
+            "Respond with ONLY this JSON (no markdown, no extra text):\n"
+            '{"options":["A) text","B) text","C) text","D) text"],'
+            '"correct":"A","explanation":"One sentence why this answer is correct"}\n\n'
+            "Rules:\n"
+            f"- All 4 options must be plausible distractors appropriate for Class {class_num}\n"
+            "- Only ONE option must be correct; the others must be clearly wrong but tempting\n"
+            "- Keep each option concise (under 15 words)\n"
+            "- The correct field must be exactly one letter: A, B, C, or D"
+        )
+        response = gemini_generate(
+            _gemini,
+            contents=[prompt],
+            config=_gtypes.GenerateContentConfig(
+                max_output_tokens=400,
+                temperature=0.4,
+                response_mime_type='application/json',
+            ),
+        )
+        result = json.loads(response.text.strip())
+        # Normalise: ensure options list has exactly 4 entries
+        opts = result.get('options', [])
+        labels = ['A', 'B', 'C', 'D']
+        while len(opts) < 4:
+            opts.append(f"{labels[len(opts)]} ) —")
+        result['options'] = opts[:4]
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({'error': str(exc)}), 500
+
+
 @app.route('/api/generate-paper', methods=['POST'])
 def generate_paper():
     if not current_user.is_authenticated:

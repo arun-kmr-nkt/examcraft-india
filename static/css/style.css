@@ -1012,6 +1012,102 @@ body {
   border-left-color: var(--primary);
 }
 
+/* ── MCQ options editor ── */
+.q-options-edit-section {
+  margin-top: 0.8rem;
+  border: 1.5px solid var(--primary-light, #c7d2fe);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  background: #f8f9ff;
+}
+.q-options-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+.q-suggest-btn {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.7rem;
+  border-color: var(--primary);
+  color: var(--primary);
+  background: white;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.q-suggest-btn:hover:not(:disabled) { background: #e8ecff; }
+.q-suggest-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.q-option-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.q-option-edit-label {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--primary);
+  min-width: 28px;
+}
+.q-option-edit-input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: white;
+  transition: border-color 0.15s;
+  outline: none;
+}
+.q-option-edit-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
+}
+.q-suggest-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: #fff8e1;
+  border-left: 3px solid #f6c90e;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0.4rem 0 0.5rem;
+}
+.q-correct-answer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+.q-correct-answer-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--success, #48bb78);
+  white-space: nowrap;
+}
+.q-correct-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.q-correct-radio input[type="radio"] {
+  accent-color: var(--success, #48bb78);
+  cursor: pointer;
+}
+.q-correct-radio input[type="radio"]:checked + span { color: var(--success, #48bb78); }
+
 /* ── Answer key edit row in edit panel ── */
 .q-answer-edit-row {
   margin-top: 0.7rem;
