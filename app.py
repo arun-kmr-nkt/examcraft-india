@@ -3071,7 +3071,6 @@ def suggest_options():
         return jsonify({'error': 'AI service not configured'}), 503
 
     try:
-        from google.generativeai import types as _gtypes
         prompt = (
             f"You are an expert Indian school examiner for Class {class_num} {subject}.\n\n"
             f"Question: {question_txt}\n\n"
@@ -3089,21 +3088,23 @@ def suggest_options():
         response = gemini_generate(
             _gemini,
             contents=[prompt],
-            config=_gtypes.GenerateContentConfig(
+            config=genai_types.GenerateContentConfig(
                 max_output_tokens=400,
                 temperature=0.4,
                 response_mime_type='application/json',
             ),
         )
-        result = json.loads(response.text.strip())
+        raw = response.text.strip()
+        result = json.loads(raw)
         # Normalise: ensure options list has exactly 4 entries
-        opts = result.get('options', [])
+        opts   = result.get('options', [])
         labels = ['A', 'B', 'C', 'D']
         while len(opts) < 4:
-            opts.append(f"{labels[len(opts)]} ) —")
+            opts.append(f"{labels[len(opts)]}) —")
         result['options'] = opts[:4]
         return jsonify(result)
     except Exception as exc:
+        app.logger.error(f'suggest_options error: {exc}')
         return jsonify({'error': str(exc)}), 500
 
 

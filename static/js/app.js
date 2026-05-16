@@ -2284,7 +2284,7 @@ async function suggestMCQOptions(secIdx, qIdx) {
     }
     showToast('Options suggested — review and save!', 'success');
   } catch (e) {
-    showToast('Could not suggest options. Please try again.', 'error');
+    showToast(`Auto-suggest failed: ${e.message || 'Unknown error'}`, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '&#129302; Auto-suggest'; }
   }
