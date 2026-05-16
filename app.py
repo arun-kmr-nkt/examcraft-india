@@ -771,17 +771,29 @@ NCERT_CHAPTERS = {
                "Data Handling and Presentation", "Prime Time", "Perimeter and Area",
                "Fractions", "Playing with Constructions", "Symmetry",
                "The Other Side of Zero"],
-        "7": ["Integers", "Fractions and Decimals", "Data Handling", "Simple Equations",
-               "Lines and Angles", "The Triangle and its Properties", "Congruence of Triangles",
-               "Comparing Quantities", "Rational Numbers", "Practical Geometry",
-               "Perimeter and Area", "Algebraic Expressions", "Exponents and Powers",
-               "Symmetry", "Visualising Solid Shapes"],
-        "8": ["Rational Numbers", "Linear Equations in One Variable",
-               "Understanding Quadrilaterals", "Data Handling",
-               "Squares and Square Roots", "Cubes and Cube Roots", "Comparing Quantities",
-               "Algebraic Expressions and Identities", "Visualising Solid Shapes",
-               "Mensuration", "Exponents and Powers", "Direct and Inverse Proportions",
-               "Factorisation", "Introduction to Graphs"],
+        # Class 7 uses new NCERT 'Ganita Prakash' Part I + Part II (2025-26 onwards)
+        "7": [
+            # Part I
+            "Large Numbers Around Us", "Arithmetic Expressions",
+            "A Peek Beyond the Point", "Expressions Using Letter-Numbers",
+            "Parallel and Intersecting Lines", "Number Play",
+            "A Tale of Three Intersecting Lines",
+            # Part II
+            "Geometric Twins", "Integers — Multiplication and Division",
+            "Finding Common Ground", "Decimals — Multiplication and Division",
+            "Connecting the Dots", "Constructions and Tilings", "Finding the Unknown",
+        ],
+        # Class 8 uses new NCERT 'Ganita Prakash' Part I + Part II (2025-26 onwards)
+        "8": [
+            # Part I
+            "A Square and A Cube", "Power Play", "A Story of Numbers",
+            "Quadrilaterals", "Number Play", "We Distribute, Yet Things Multiply",
+            "Proportional Reasoning",
+            # Part II
+            "Fractions in Disguise", "The Baudhayana-Pythagoras Theorem",
+            "Proportional Reasoning-2", "Exploring Some Geometrical Themes",
+            "Tales by Dots and Lines", "Algebra Play", "Area",
+        ],
         "9": ["Number Systems", "Polynomials", "Coordinate Geometry",
                "Linear Equations in Two Variables",
                "Lines and Angles", "Triangles", "Quadrilaterals",
