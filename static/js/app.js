@@ -1486,7 +1486,8 @@ function renderQuestionPaper(paper) {
 
       // Question image (if one was attached via the edit panel)
       if (q.image_data_url) {
-        qBody += `<div class="qp-q-image-wrap"><img src="${q.image_data_url}" class="qp-q-image" alt="Question diagram" /></div>`;
+        const _imgW = (q.image_size || 60) + '%';
+        qBody += `<div class="qp-q-image-wrap"><img src="${q.image_data_url}" class="qp-q-image" style="width:${_imgW};max-width:${_imgW}" alt="Question diagram" /></div>`;
       }
 
       html += qBody;
@@ -1941,6 +1942,7 @@ function editQuestion(secIdx, qIdx) {
   if (!textEl) return;
   const currentText = q.text || '';
   const hasImg = !!q.image_data_url;
+  const curSize = q.image_size || 60;
   textEl.innerHTML = `
     <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}" rows="4">${currentText.replace(/</g,'&lt;')}</textarea>
     <div class="q-img-upload-row">
@@ -1951,7 +1953,16 @@ function editQuestion(secIdx, qIdx) {
       </label>
       ${hasImg ? `<button class="btn btn-sm q-img-clear-btn" onclick="clearQuestionImage(${secIdx},${qIdx})">&#10005; Remove image</button>` : ''}
     </div>
-    ${hasImg ? `<div class="q-img-preview-wrap"><img src="${q.image_data_url}" class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>` : `<div class="q-img-preview-wrap" id="qimgprev-wrap-${secIdx}-${qIdx}" style="display:none"><img class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>`}
+    ${hasImg
+      ? `<div class="q-img-preview-wrap"><img src="${q.image_data_url}" class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>`
+      : `<div class="q-img-preview-wrap" id="qimgprev-wrap-${secIdx}-${qIdx}" style="display:none"><img class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>`}
+    <div class="q-img-size-row" id="qimgsize-wrap-${secIdx}-${qIdx}" ${hasImg ? '' : 'style="display:none"'}>
+      <span class="q-img-size-label">Image size: <strong id="qimgsize-val-${secIdx}-${qIdx}">${curSize}%</strong></span>
+      <input type="range" min="20" max="100" step="5" value="${curSize}"
+             class="q-img-size-slider" id="qimgslider-${secIdx}-${qIdx}"
+             oninput="document.getElementById('qimgsize-val-${secIdx}-${qIdx}').textContent=this.value+'%'" />
+      <span style="font-size:0.75rem;color:var(--text-secondary)">Small&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Large</span>
+    </div>
     <div class="q-edit-btns">
       <button class="btn btn-primary btn-sm" onclick="saveQuestion(${secIdx},${qIdx})">&#10003; Save</button>
       <button class="btn btn-outline btn-sm" onclick="cancelEditQuestion()">Cancel</button>
@@ -1968,11 +1979,14 @@ function previewQuestionImage(secIdx, qIdx, input) {
     const dataUrl = e.target.result;
     // Store temporarily in the question object (will be committed on Save)
     state.questionPaper.sections[secIdx].questions[qIdx]._pendingImage = dataUrl;
-    // Show preview
+    // Show preview image
     const prevImg = document.getElementById(`qimgprev-${secIdx}-${qIdx}`);
     if (prevImg) prevImg.src = dataUrl;
     const prevWrap = document.getElementById(`qimgprev-wrap-${secIdx}-${qIdx}`);
     if (prevWrap) prevWrap.style.display = 'block';
+    // Reveal size slider (hidden until an image exists)
+    const sizeWrap = document.getElementById(`qimgsize-wrap-${secIdx}-${qIdx}`);
+    if (sizeWrap) sizeWrap.style.display = 'flex';
   };
   reader.readAsDataURL(file);
 }
@@ -1994,6 +2008,11 @@ function saveQuestion(secIdx, qIdx) {
   if (q._pendingImage !== undefined) {
     q.image_data_url = q._pendingImage || '';
     delete q._pendingImage;
+  }
+  // Persist image size from slider (only when image is present)
+  if (q.image_data_url) {
+    const slider = document.getElementById(`qimgslider-${secIdx}-${qIdx}`);
+    if (slider) q.image_size = parseInt(slider.value, 10) || 60;
   }
   renderQuestionPaper(state.questionPaper);
   showToast('Question updated!', 'success');

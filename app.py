@@ -3598,20 +3598,24 @@ def download_word():
                 tab_run.font.size = Pt(9)
                 tab_run.font.color.rgb = RGBColor(113, 128, 150)
 
-                # Insert attached image (if any) below the question text
+                # Insert attached image (if any) below the question text — centred
                 img_data_url = q.get('image_data_url', '')
                 if img_data_url and ',' in img_data_url:
                     try:
                         import base64 as _b64
+                        from docx.enum.text import WD_ALIGN_PARAGRAPH as _WD_ALIGN_P
                         img_b64 = img_data_url.split(',', 1)[1]
                         img_bytes = _b64.b64decode(img_b64)
                         img_stream = io.BytesIO(img_bytes)
+                        # Scale: image_size is a percentage (20-100), max usable width ≈ 6 in
+                        img_size_pct = max(20, min(100, int(q.get('image_size', 60))))
+                        img_width_in = (img_size_pct / 100.0) * 6.0
                         img_para = doc.add_paragraph()
-                        img_para.paragraph_format.space_before = Pt(4)
-                        img_para.paragraph_format.space_after  = Pt(4)
-                        img_para.paragraph_format.left_indent  = Inches(0.2)
+                        img_para.alignment = _WD_ALIGN_P.CENTER
+                        img_para.paragraph_format.space_before = Pt(6)
+                        img_para.paragraph_format.space_after  = Pt(6)
                         img_run = img_para.add_run()
-                        img_run.add_picture(img_stream, width=Inches(4))
+                        img_run.add_picture(img_stream, width=Inches(img_width_in))
                     except Exception:
                         pass  # silently ignore malformed image data
 

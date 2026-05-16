@@ -972,15 +972,43 @@ body {
 
 /* ── Question image displayed in the rendered paper ── */
 .qp-q-image-wrap {
-  margin-top: 0.6rem;
-  text-align: center;
+  margin-top: 0.8rem;
+  margin-bottom: 0.4rem;
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 .qp-q-image {
-  max-width: 100%;
-  max-height: 260px;
+  display: block;
+  max-height: 320px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   object-fit: contain;
+}
+
+/* ── Image size slider in edit panel ── */
+.q-img-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.q-img-size-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  min-width: 110px;
+}
+.q-img-size-label strong {
+  color: var(--primary);
+}
+.q-img-size-slider {
+  flex: 1;
+  min-width: 120px;
+  max-width: 220px;
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 /* School logo upload zone */
