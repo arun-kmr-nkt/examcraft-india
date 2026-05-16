@@ -1,0 +1,21 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    # Runs every 10 minutes — prevents Render free-tier spin-down
+    - cron: '*/10 * * * *'
+  workflow_dispatch:   # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping ExamCraft
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://examcraft-india.onrender.com/ping)
+          echo "Ping status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Warning: site returned HTTP $STATUS"
+          else
+            echo "Site is alive!"
+          fi
