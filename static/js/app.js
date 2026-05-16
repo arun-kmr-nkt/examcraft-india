@@ -304,6 +304,74 @@ function toggleProfileMenu() {
   menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 }
 
+/* ===== API KEY SETTINGS ===== */
+function openApiKeySettings() {
+  const modal = document.getElementById('api-key-modal');
+  if (!modal) return;
+  // Reset state
+  document.getElementById('api-key-input').value = '';
+  document.getElementById('api-key-msg').style.display = 'none';
+  // Show whether a key is already saved (we know this from loadUserProfile)
+  const hasKey = window._profileHasApiKey || false;
+  const cur = document.getElementById('api-key-current');
+  if (cur) cur.style.display = hasKey ? 'block' : 'none';
+  modal.style.display = 'flex';
+}
+
+function closeApiKeySettings() {
+  const modal = document.getElementById('api-key-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveApiKeySettings() {
+  const input = document.getElementById('api-key-input');
+  const btn   = document.getElementById('api-key-save-btn');
+  const msg   = document.getElementById('api-key-msg');
+  const key   = (input.value || '').trim();
+  if (!key) { showToast('Please enter an API key first.', 'error'); return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Testing…';
+  msg.style.display = 'none';
+  try {
+    const res  = await fetch('/api/settings/api-key', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.warning) {
+      msg.textContent = '⚠ ' + data.warning;
+      msg.style.color = 'var(--warning, #b45309)';
+      msg.style.display = 'block';
+    } else {
+      window._profileHasApiKey = true;
+      showToast('API key saved and verified!', 'success');
+      closeApiKeySettings();
+    }
+  } catch (e) {
+    msg.textContent = '✗ ' + (e.message || 'Failed to save');
+    msg.style.color = 'var(--error, #dc2626)';
+    msg.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save & Test';
+  }
+}
+
+async function clearApiKeySettings() {
+  if (!confirm('Remove your saved API key? The shared server key will be used instead.')) return;
+  try {
+    await fetch('/api/settings/api-key', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: '' }),
+    });
+    window._profileHasApiKey = false;
+    showToast('API key removed.', 'success');
+    closeApiKeySettings();
+  } catch (e) {
+    showToast('Failed to remove key: ' + e.message, 'error');
+  }
+}
+
 /* ===== UPGRADE MODAL ===== */
 function openUpgradeModal(tab) {
   document.getElementById('upgrade-modal').style.display = 'flex';
@@ -589,6 +657,7 @@ async function loadUserProfile() {
     const serverTeacher = p.teacher_name || '';
     const serverSchool  = p.school_name  || '';
     const serverLogo    = p.school_logo  || '';
+    window._profileHasApiKey = !!p.has_api_key;
 
     // Server data wins; update localStorage cache so it stays fresh
     if (serverTeacher) _lsSet(_LS_TEACHER, serverTeacher);

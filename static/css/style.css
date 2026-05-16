@@ -1681,7 +1681,7 @@ body {
   text-decoration: none;
   transition: background 0.15s;
 }
-.profile-menu-item:hover { background: var(--gradient-soft); }
+.profile-menu-item:hover { background: var(--gradient-soft); cursor: pointer; }
 .logout-item { color: var(--danger); }
 .logout-item:hover { background: var(--danger-bg); }
 

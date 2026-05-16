@@ -404,15 +404,16 @@ class ContactRequest(db.Model):
 
 
 class UserProfile(db.Model):
-    """Stores per-user preferences: teacher name, school info, and logo.
+    """Stores per-user preferences: teacher name, school info, logo, and API key.
     One row per user — upserted via /api/user-profile endpoints."""
     __tablename__ = 'user_profiles'
-    id           = db.Column(db.Integer, primary_key=True)
-    user_id      = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
-    teacher_name = db.Column(db.String(256))
-    school_name  = db.Column(db.String(256))
-    school_logo  = db.Column(db.Text)   # base64 data-URL (may be large)
-    updated_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    id             = db.Column(db.Integer, primary_key=True)
+    user_id        = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    teacher_name   = db.Column(db.String(256))
+    school_name    = db.Column(db.String(256))
+    school_logo    = db.Column(db.Text)   # base64 data-URL (may be large)
+    google_api_key = db.Column(db.String(256))  # personal Gemini API key (optional)
+    updated_at     = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 @login_manager.user_loader
@@ -471,25 +472,32 @@ def get_session_id():
     return session['sid']
 
 
-def get_gemini_client():
-    api_key = os.environ.get('GOOGLE_API_KEY', '')
+def get_gemini_client(user_id=None):
+    """Return a Gemini client using the user's personal API key if saved,
+    otherwise fall back to the server-level GOOGLE_API_KEY env var."""
+    if user_id:
+        try:
+            profile = UserProfile.query.filter_by(user_id=user_id).first()
+            if profile and profile.google_api_key:
+                return genai.Client(api_key=profile.google_api_key.strip())
+        except Exception:
+            pass  # DB not ready yet during startup — fall through
+    api_key = os.environ.get('GOOGLE_API_KEY', '').strip()
     if not api_key:
         return None
     return genai.Client(api_key=api_key)
 
 
 # Models tried in order on quota exhaustion.
-# Each model has an independent free-tier quota pool, so if one is exhausted
-# the next may still succeed.
-#   gemini-2.5-flash    — best quality, lowest free quota (thinking model)
-#   gemini-2.0-flash    — high quality, higher free quota
-#   gemini-2.0-flash-lite — lighter/faster, separate quota bucket
-#   gemini-1.5-flash    — older but reliable, separate quota bucket
+# gemini-2.0-flash is PRIMARY: highest free-tier quota (1M TPM, 15 RPM, 1500 RPD),
+# no thinking-token overhead, and produces excellent paper quality.
+# gemini-2.5-flash is a thinking model — it silently burns through TPM quota
+# with hidden reasoning tokens, causing 429s even on fresh API keys.
 _GEMINI_MODELS = [
-    'models/gemini-2.5-flash',
     'models/gemini-2.0-flash',
     'models/gemini-2.0-flash-lite',
     'models/gemini-1.5-flash',
+    'models/gemini-2.5-flash',
 ]
 
 
@@ -3039,12 +3047,47 @@ def get_user_profile():
     """Return the logged-in user's saved profile (teacher name, school, logo)."""
     profile = UserProfile.query.filter_by(user_id=current_user.id).first()
     if not profile:
-        return jsonify({'teacher_name': '', 'school_name': '', 'school_logo': ''})
+        return jsonify({'teacher_name': '', 'school_name': '', 'school_logo': '', 'has_api_key': False})
     return jsonify({
         'teacher_name': profile.teacher_name or '',
         'school_name':  profile.school_name  or '',
         'school_logo':  profile.school_logo  or '',
+        'has_api_key':  bool(profile.google_api_key),
     })
+
+
+@app.route('/api/settings/api-key', methods=['POST'])
+@login_required
+def save_api_key():
+    """Save or clear the user's personal Gemini API key."""
+    data    = request.get_json(silent=True) or {}
+    new_key = (data.get('api_key') or '').strip()
+    profile = UserProfile.query.filter_by(user_id=current_user.id).first()
+    if not profile:
+        profile = UserProfile(user_id=current_user.id)
+        db.session.add(profile)
+    profile.google_api_key = new_key or None
+    profile.updated_at = datetime.now(timezone.utc)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    # Quick smoke-test: verify the key works with a tiny Gemini call
+    if new_key:
+        try:
+            test_client = genai.Client(api_key=new_key)
+            test_client.models.generate_content(
+                model='models/gemini-2.0-flash',
+                contents=['Say OK'],
+                config=genai_types.GenerateContentConfig(max_output_tokens=5),
+            )
+        except Exception as e:
+            # Key saved but test failed — warn user
+            return jsonify({'success': True, 'warning': f'Key saved but test failed: {str(e)[:120]}'}), 200
+
+    return jsonify({'success': True})
 
 
 @app.route('/api/user-profile', methods=['POST'])
@@ -3092,9 +3135,9 @@ def suggest_options():
     if not question_txt:
         return jsonify({'error': 'question text is required'}), 400
 
-    _gemini = get_gemini_client()
+    _gemini = get_gemini_client(current_user.id)
     if not _gemini:
-        return jsonify({'error': 'AI service not configured'}), 503
+        return jsonify({'error': 'No API key configured. Add your Gemini API key in Settings.'}), 503
 
     is_mcq = q_type in ('mcq', 'assertion_reason')
 
@@ -3229,9 +3272,9 @@ def generate_paper():
         if usage['papers'] >= limit:
             return jsonify({'error': 'limit_reached', 'plan': plan_key, 'limit': limit}), 403
 
-    gemini = get_gemini_client()
+    gemini = get_gemini_client(current_user.id)
     if not gemini:
-        return jsonify({'error': 'GOOGLE_API_KEY not configured. Get a free key at aistudio.google.com, then run: $env:GOOGLE_API_KEY="your_key"'}), 500
+        return jsonify({'error': 'No API key configured. Add your Gemini API key in Settings (⚙ icon) or ask your administrator.'}), 500
 
     try:
         board         = request.form.get('board', 'CBSE')
@@ -3394,9 +3437,10 @@ Generate ALL {total_q_count} questions exactly as specified above. Each section 
             gemini,
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                max_output_tokens=20000,
+                max_output_tokens=8192,   # 8 K is ample for a full paper; 20 K burns free-tier TPM quota
                 temperature=gen_temp,
-                response_mime_type='application/json',
+                # No response_mime_type — thinking models return empty/null with JSON mime;
+                # extract_json() handles free-form text robustly.
             ),
         )
 
@@ -3467,9 +3511,9 @@ def evaluate():
         if usage['evals'] >= eval_limit:
             return jsonify({'error': 'limit_reached', 'plan': plan_key, 'limit': eval_limit}), 403
 
-    gemini = get_gemini_client()
+    gemini = get_gemini_client(current_user.id)
     if not gemini:
-        return jsonify({'error': 'GOOGLE_API_KEY not configured. Get a free key at aistudio.google.com'}), 500
+        return jsonify({'error': 'No API key configured. Add your Gemini API key in Settings.'}), 500
 
     student_name   = request.form.get('student_name', 'Student')
     roll_no        = request.form.get('roll_no', 'N/A')
@@ -4085,22 +4129,22 @@ with app.app_context():
                 except Exception:
                     pass
 
-    # Migrate user_profiles table — ensure school_logo column exists
+    # Migrate user_profiles table — ensure all columns exist
     if 'user_profiles' in insp.get_table_names():
         up_cols = {c['name'] for c in insp.get_columns('user_profiles')}
         with db.engine.connect() as conn:
-            if 'school_logo' not in up_cols:
-                try:
-                    conn.execute(sa_text('ALTER TABLE user_profiles ADD COLUMN school_logo TEXT'))
-                    conn.commit()
-                except Exception:
-                    pass
-            if 'updated_at' not in up_cols:
-                try:
-                    conn.execute(sa_text('ALTER TABLE user_profiles ADD COLUMN updated_at DATETIME'))
-                    conn.commit()
-                except Exception:
-                    pass
+            for col_def in [
+                ('school_logo',    'ALTER TABLE user_profiles ADD COLUMN school_logo TEXT'),
+                ('updated_at',     'ALTER TABLE user_profiles ADD COLUMN updated_at DATETIME'),
+                ('google_api_key', 'ALTER TABLE user_profiles ADD COLUMN google_api_key VARCHAR(256)'),
+            ]:
+                col_name, ddl = col_def
+                if col_name not in up_cols:
+                    try:
+                        conn.execute(sa_text(ddl))
+                        conn.commit()
+                    except Exception:
+                        pass
 
 
 if __name__ == '__main__':
