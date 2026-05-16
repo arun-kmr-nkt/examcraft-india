@@ -1462,6 +1462,40 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* Input row with saved-badge inline */
+.input-with-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.input-with-badge-row input {
+  flex: 1;
+}
+
+/* "✓ Saved" badge shown next to auto-filled fields */
+.saved-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid rgba(72,187,120,0.3);
+  border-radius: 8px;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+/* Note shown below logo when loaded from profile */
+.saved-note {
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--success);
+  font-weight: 500;
+}
+
 /* ===== QUESTION TYPE DESCRIPTION ===== */
 .qt-desc {
   font-size: 0.78rem;

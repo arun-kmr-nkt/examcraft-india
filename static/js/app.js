@@ -11,6 +11,7 @@ const state = {
   teacherName: '',
   schoolName: '',
   schoolLogoDataUrl: '',
+  examDate: '',
   selectedChapters: [],
   chapterImages: [],
   questionTypes: {},
@@ -93,10 +94,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Init app
   loadBoards();
   updateMarksTotal();
+  loadUserProfile();   // pre-fill teacher name, school name, and logo from saved profile
 
   document.getElementById('board').addEventListener('change', onBoardChange);
   document.getElementById('class_num').addEventListener('change', onClassChange);
   document.getElementById('subject').addEventListener('change', onSubjectChange);
+
+  // Hide "saved" badge once user manually edits the field
+  document.getElementById('teacher_name').addEventListener('input', () => {
+    const b = document.getElementById('teacher-saved-badge');
+    if (b) b.style.display = 'none';
+  });
+  document.getElementById('school_name').addEventListener('input', () => {
+    const b = document.getElementById('school-name-saved-badge');
+    if (b) b.style.display = 'none';
+  });
 
   // Close profile menu when clicking outside
   document.addEventListener('click', (e) => {
@@ -511,6 +523,66 @@ function _restoreQuestionTypeInputs() {
   updateMarksTotal();
 }
 
+/* ===== USER PROFILE (teacher name, school name, logo persistence) ===== */
+async function loadUserProfile() {
+  try {
+    const res = await fetch('/api/user-profile');
+    if (!res.ok) return;
+    const profile = await res.json();
+
+    // Pre-fill teacher name if not already typed
+    const teacherInput = document.getElementById('teacher_name');
+    if (teacherInput && profile.teacher_name && !teacherInput.value.trim()) {
+      teacherInput.value = profile.teacher_name;
+      state.teacherName = profile.teacher_name;
+      const badge = document.getElementById('teacher-saved-badge');
+      if (badge) badge.style.display = 'inline-flex';
+    }
+
+    // Pre-fill school name if not already typed
+    const schoolInput = document.getElementById('school_name');
+    if (schoolInput && profile.school_name && !schoolInput.value.trim()) {
+      schoolInput.value = profile.school_name;
+      state.schoolName = profile.school_name;
+      const badge = document.getElementById('school-name-saved-badge');
+      if (badge) badge.style.display = 'inline-flex';
+    }
+
+    // Load saved logo if none already selected
+    if (profile.school_logo && !state.schoolLogoDataUrl) {
+      state.schoolLogoDataUrl = profile.school_logo;
+      const img = document.getElementById('logo-preview-img');
+      if (img) img.src = profile.school_logo;
+      const previewWrap = document.getElementById('logo-preview-wrap');
+      if (previewWrap) previewWrap.style.display = 'block';
+      const placeholder = document.getElementById('logo-upload-placeholder');
+      if (placeholder) placeholder.style.display = 'none';
+      const removeBtn = document.getElementById('logo-remove-btn');
+      if (removeBtn) removeBtn.style.display = 'inline-flex';
+      const savedNote = document.getElementById('logo-saved-note');
+      if (savedNote) savedNote.style.display = 'block';
+    }
+  } catch (e) {
+    // Silently ignore — profile is optional
+  }
+}
+
+async function saveUserProfile(teacherName, schoolName, schoolLogoDataUrl) {
+  try {
+    await fetch('/api/user-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teacher_name: teacherName || '',
+        school_name:  schoolName  || '',
+        school_logo:  schoolLogoDataUrl || '',
+      }),
+    });
+  } catch (e) {
+    // Silently ignore — saving profile is best-effort
+  }
+}
+
 /* ===== SCHOOL LOGO ===== */
 function handleLogoUpload(event) {
   const file = event.target.files[0];
@@ -523,6 +595,9 @@ function handleLogoUpload(event) {
     document.getElementById('logo-preview-wrap').style.display = 'block';
     document.getElementById('logo-upload-placeholder').style.display = 'none';
     document.getElementById('logo-remove-btn').style.display = 'inline-flex';
+    // Hide "using saved logo" note — user uploaded a fresh one
+    const savedNote = document.getElementById('logo-saved-note');
+    if (savedNote) savedNote.style.display = 'none';
   };
   reader.readAsDataURL(file);
 }
@@ -534,6 +609,8 @@ function removeLogo() {
   document.getElementById('logo-preview-wrap').style.display = 'none';
   document.getElementById('logo-upload-placeholder').style.display = 'flex';
   document.getElementById('logo-remove-btn').style.display = 'none';
+  const savedNote = document.getElementById('logo-saved-note');
+  if (savedNote) savedNote.style.display = 'none';
 }
 
 function goToStep2() {
@@ -556,9 +633,13 @@ function goToStep2() {
   state.difficulty = document.getElementById('difficulty').value;
   state.teacherName = document.getElementById('teacher_name').value.trim();
   state.schoolName = document.getElementById('school_name').value.trim();
+  state.examDate = (document.getElementById('exam_date').value || '').trim();
 
   document.getElementById('marks-target').textContent = state.totalMarks;
   updateMarksTotal();
+
+  // Persist teacher name, school name, and logo to server (best-effort, non-blocking)
+  saveUserProfile(state.teacherName, state.schoolName, state.schoolLogoDataUrl);
 
   loadChapters();
   gotoStep(2);
@@ -1028,6 +1109,7 @@ async function generatePaper() {
     formData.append('difficulty', state.difficulty);
     formData.append('teacher_name', state.teacherName);
     formData.append('school_name', state.schoolName);
+    formData.append('exam_date', state.examDate || '');
     formData.append('chapters', JSON.stringify(state.selectedChapters));
     formData.append('question_types', JSON.stringify(qt));
 
@@ -1116,7 +1198,7 @@ function renderQuestionPaper(paper) {
         </div>
         <div class="qp-meta-item">
           <span class="qp-meta-label">Date</span>
-          <span class="qp-meta-value">${info.date || '___________'}</span>
+          <span class="qp-meta-value">${info.date || state.examDate || '___________'}</span>
         </div>
       </div>
     </div>

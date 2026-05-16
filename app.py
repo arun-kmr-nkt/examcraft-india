@@ -300,6 +300,18 @@ class ContactRequest(db.Model):
     created_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class UserProfile(db.Model):
+    """Stores per-user preferences: teacher name, school info, and logo.
+    One row per user — upserted via /api/user-profile endpoints."""
+    __tablename__ = 'user_profiles'
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('users.id'), unique=True, nullable=False)
+    teacher_name = db.Column(db.String(256))
+    school_name  = db.Column(db.String(256))
+    school_logo  = db.Column(db.Text)   # base64 data-URL (may be large)
+    updated_at   = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -794,13 +806,13 @@ NCERT_CHAPTERS = {
                 "Linear Programming", "Probability"],
     },
     "Science": {
-        "6": ["Food: Where Does It Come From?", "Components of Food", "Fibre to Fabric",
-               "Sorting Materials into Groups", "Separation of Substances", "Changes Around Us",
-               "Getting to Know Plants", "Body Movements",
-               "The Living Organisms and Their Surroundings",
-               "Motion and Measurement of Distances", "Light, Shadows and Reflections",
-               "Electricity and Circuits", "Fun with Magnets", "Water", "Air Around Us",
-               "Garbage In, Garbage Out"],
+        # Class 6 Science uses the new NCERT 'Curiosity – Part 1' textbook (2024-25 onwards)
+        "6": ["The Wonderful World of Science", "Diversity in the Living World",
+               "Mindful Eating: A Path to a Healthy Body", "Exploring Magnets",
+               "Measurement of Length and Motion", "Materials Around Us",
+               "Temperature and its Measurement", "A Journey through States of Water",
+               "Methods of Separation in Everyday Life",
+               "Living Organisms and their Surroundings", "Nature's Treasure"],
         "7": ["Nutrition in Plants", "Nutrition in Animals", "Fibre to Fabric", "Heat",
                "Acids, Bases and Salts", "Physical and Chemical Changes",
                "Weather, Climate and Adaptations of Animals to Climate",
@@ -883,22 +895,16 @@ NCERT_CHAPTERS = {
                 "Ecosystem", "Biodiversity and Conservation"],
     },
     "Social Science": {
-        "6": {
-            "History": ["What, Where, How and When?", "From Hunting-Gathering to Growing Food",
-                        "In the Earliest Cities", "What Books and Burials Tell Us",
-                        "Kingdoms, Kings and an Early Republic", "New Questions and Ideas",
-                        "Ashoka, The Emperor Who Gave Up War", "Vital Villages, Thriving Towns",
-                        "Traders, Kings and Pilgrims", "New Empires and Kingdoms",
-                        "Buildings, Paintings and Books"],
-            "Geography": ["The Earth in the Solar System", "Globe: Latitudes and Longitudes",
-                          "Motions of the Earth", "Maps", "Major Domains of the Earth",
-                          "Major Landforms of the Earth", "Our Country – India",
-                          "India: Climate, Vegetation and Wildlife"],
-            "Civics": ["Understanding Diversity", "Diversity and Discrimination",
-                       "What is Government?", "Key Elements of a Democratic Government",
-                       "Panchayati Raj", "Rural Administration", "Urban Administration",
-                       "Rural Livelihoods", "Urban Livelihoods"],
-        },
+        # Class 6 Social Science uses the new integrated NCERT textbook
+        # 'Exploring Society: India and Beyond – Part 1' (2024-25 onwards)
+        "6": ["Locating Places on the Earth", "The Beginnings of Indian Civilisation",
+               "India: Physical Setting", "The Vedic Period", "Governing Ancient India",
+               "India: Climate, Vegetation and Wildlife", "From Villages to Cities",
+               "Religious Reforms and New Religions", "Maps and Globe",
+               "India: Natural Resources", "Landforms and their Evolution",
+               "Empires and Republics (600 BCE – 200 CE)", "Unity in Diversity",
+               "The Spread of Indian Culture", "Our Cultural Heritage",
+               "Local Government"],
         "7": {
             "History": ["Tracing Changes Through A Thousand Years", "New Kings and Kingdoms",
                         "The Delhi Sultans", "The Mughal Empire", "Rulers and Buildings",
@@ -2649,6 +2655,50 @@ def submit_contact():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# USER PROFILE ROUTES (teacher name, school name, school logo persistence)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/user-profile', methods=['GET'])
+@login_required
+def get_user_profile():
+    """Return the logged-in user's saved profile (teacher name, school, logo)."""
+    profile = UserProfile.query.filter_by(user_id=current_user.id).first()
+    if not profile:
+        return jsonify({'teacher_name': '', 'school_name': '', 'school_logo': ''})
+    return jsonify({
+        'teacher_name': profile.teacher_name or '',
+        'school_name':  profile.school_name  or '',
+        'school_logo':  profile.school_logo  or '',
+    })
+
+
+@app.route('/api/user-profile', methods=['POST'])
+@login_required
+def save_user_profile():
+    """Upsert the logged-in user's profile. Accepts JSON with any subset of
+    teacher_name / school_name / school_logo keys."""
+    data = request.get_json(silent=True) or {}
+    profile = UserProfile.query.filter_by(user_id=current_user.id).first()
+    if not profile:
+        profile = UserProfile(user_id=current_user.id)
+        db.session.add(profile)
+    if 'teacher_name' in data:
+        profile.teacher_name = (data['teacher_name'] or '')[:256]
+    if 'school_name' in data:
+        profile.school_name = (data['school_name'] or '')[:256]
+    if 'school_logo' in data:
+        # Accept '' to clear the logo
+        profile.school_logo = data['school_logo'] or None
+    profile.updated_at = datetime.now(timezone.utc)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+    return jsonify({'success': True})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # GENERATE PAPER ROUTE
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2678,6 +2728,7 @@ def generate_paper():
         duration      = request.form.get('duration', '3 Hours')
         difficulty    = request.form.get('difficulty', 'Mixed')
         teacher_name  = request.form.get('teacher_name', '')
+        exam_date     = request.form.get('exam_date', '').strip()
         chapters      = json.loads(request.form.get('chapters', '[]'))
         question_types= json.loads(request.form.get('question_types', '{}'))
 
@@ -2731,6 +2782,7 @@ def generate_paper():
         diff_desc = difficulty_map.get(difficulty.lower(), 'Mixed')
 
         teacher_line = f"- Teacher / Examiner: {teacher_name}" if teacher_name else ""
+        date_line    = f"- Exam Date: {exam_date}" if exam_date else ""
 
         prompt_text = f"""You are an expert Indian school examiner creating an official question paper.
 
@@ -2744,6 +2796,7 @@ EXAM SPECIFICATIONS:
 - Duration: {duration}
 - Difficulty Level: {diff_desc}
 {teacher_line}
+{date_line}
 
 QUESTION PAPER STRUCTURE:
 {chr(10).join(sections_desc)}
@@ -2780,6 +2833,7 @@ Return ONLY a valid JSON object (no markdown, no explanation, no text before or 
     "total_marks": {total_marks},
     "duration": "{duration}",
     "teacher_name": "{teacher_name}",
+    "date": "{exam_date}",
     "chapters": "{chapters_str}"
   }},
   "instructions": [
@@ -3237,7 +3291,8 @@ def download_word():
         if info.get('class'):     meta_parts.append(f"Class: {info['class']}")
         if info.get('total_marks'): meta_parts.append(f"Max. Marks: {info['total_marks']}")
         if info.get('duration'):  meta_parts.append(f"Duration: {info['duration']}")
-        meta_parts.append("Date: ___________")
+        _doc_date = info.get('date', '').strip()
+        meta_parts.append(f"Date: {_doc_date}" if _doc_date else "Date: ___________")
         add_para("   |   ".join(meta_parts),
                  align=WD_ALIGN_PARAGRAPH.CENTER, size=10, space_after=8)
 

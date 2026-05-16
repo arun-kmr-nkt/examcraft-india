@@ -265,6 +265,7 @@
             <div class="form-group">
               <label for="duration">Duration</label>
               <select id="duration">
+                <option value="30 Minutes">30 Minutes</option>
                 <option value="1 Hour">1 Hour</option>
                 <option value="1.5 Hours">1.5 Hours</option>
                 <option value="2 Hours">2 Hours</option>
@@ -284,11 +285,21 @@
             </div>
             <div class="form-group">
               <label for="teacher_name">Teacher's Name <span class="optional-badge">Optional</span></label>
-              <input type="text" id="teacher_name" placeholder="e.g. Mrs. Sharma" maxlength="100" />
+              <div class="input-with-badge-row">
+                <input type="text" id="teacher_name" placeholder="e.g. Mrs. Sharma" maxlength="100" />
+                <span class="saved-badge" id="teacher-saved-badge" style="display:none;" title="Auto-filled from your saved profile">&#10003; Saved</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="exam_date">Exam Date <span class="optional-badge">Optional</span></label>
+              <input type="date" id="exam_date" />
             </div>
             <div class="form-group">
               <label for="school_name">School Name <span class="optional-badge">Optional</span></label>
-              <input type="text" id="school_name" placeholder="e.g. Delhi Public School" maxlength="150" />
+              <div class="input-with-badge-row">
+                <input type="text" id="school_name" placeholder="e.g. Delhi Public School" maxlength="150" />
+                <span class="saved-badge" id="school-name-saved-badge" style="display:none;" title="Auto-filled from your saved profile">&#10003; Saved</span>
+              </div>
             </div>
             <div class="form-group">
               <label for="school_logo">School Logo <span class="optional-badge">Optional</span></label>
@@ -304,6 +315,7 @@
                 </div>
                 <button class="btn btn-outline btn-sm" id="logo-remove-btn" style="display:none;" onclick="removeLogo()">&#10005; Remove</button>
               </div>
+              <div id="logo-saved-note" style="display:none;" class="saved-note">&#10003; Using your saved school logo &mdash; upload a new one to replace it</div>
               <input type="file" id="school_logo" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleLogoUpload(event)" />
             </div>
           </div>
