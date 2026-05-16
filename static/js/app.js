@@ -2247,6 +2247,10 @@ async function suggestMCQOptions(secIdx, qIdx) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
   if (hintDiv) { hintDiv.style.display = 'none'; hintDiv.textContent = ''; }
 
+  // Abort after 20 s so the UI never hangs indefinitely
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 20000);
+
   try {
     const res = await fetch('/api/suggest-options', {
       method:  'POST',
@@ -2256,7 +2260,10 @@ async function suggestMCQOptions(secIdx, qIdx) {
         subject:   state.subject,
         class_num: state.classNum,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
+
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
@@ -2284,7 +2291,12 @@ async function suggestMCQOptions(secIdx, qIdx) {
     }
     showToast('Options suggested — review and save!', 'success');
   } catch (e) {
-    showToast(`Auto-suggest failed: ${e.message || 'Unknown error'}`, 'error');
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      showToast('Auto-suggest timed out. Please try again.', 'error');
+    } else {
+      showToast(`Auto-suggest failed: ${e.message || 'Unknown error'}`, 'error');
+    }
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '&#129302; Auto-suggest'; }
   }

@@ -3071,51 +3071,66 @@ def suggest_options():
         return jsonify({'error': 'AI service not configured'}), 503
 
     try:
+        # ── Pre-clean question text: strip LaTeX / caret notation so model
+        #    doesn't get confused and return empty output ───────────────────
+        q_clean = _normalize_symbols(question_txt)
+        q_clean = re.sub(r'\^\{([^}]+)\}', r'^\1', q_clean)   # ^{6} → ^6
+        q_clean = re.sub(r'_\{([^}]+)\}',  r'_\1', q_clean)   # _{n} → _n
+        q_clean = re.sub(r'\\[a-zA-Z]+',   ' ',    q_clean)   # strip remaining LaTeX cmds
+        q_clean = q_clean.strip()
+
         prompt = (
-            f"You are an expert Indian school examiner for Class {class_num} {subject}.\n\n"
-            f"Question: {question_txt}\n\n"
-            "Generate exactly 4 MCQ options (A, B, C, D) — only one must be correct — "
-            "and identify the correct answer.\n\n"
-            "You MUST respond with this exact JSON structure:\n"
-            '{"options":["A) text","B) text","C) text","D) text"],'
-            '"correct":"A","explanation":"One sentence why this answer is correct"}\n\n'
-            "STRICT RULES:\n"
-            f"1. All 4 options must be plausible distractors for Class {class_num} {subject}.\n"
-            "2. Only ONE option is correct; others must be wrong but tempting.\n"
-            "3. Keep each option under 15 words.\n"
-            "4. The correct field must be exactly ONE letter: A, B, C, or D.\n"
-            "5. Do NOT use LaTeX backslash commands (no \\alpha, \\frac, \\sqrt, \\times etc.).\n"
-            "   Write math using Unicode directly: ×, ÷, ², ³, √, π, α, β, θ, ≤, ≥, ≠.\n"
-            "6. Do NOT put backslashes, unescaped quotes, or raw newlines inside string values.\n"
-            "7. Always output the full JSON — never return null, empty string, or partial JSON."
+            f"Class {class_num} {subject} MCQ — generate 4 options for this question:\n"
+            f"Q: {q_clean}\n\n"
+            "Return ONLY this JSON (no markdown, no extra text):\n"
+            '{"options":["A) ...","B) ...","C) ...","D) ..."],'
+            '"correct":"A","explanation":"one sentence"}\n\n'
+            "Rules: exactly 4 options, only one correct, correct= single letter A/B/C/D, "
+            "no LaTeX backslashes, use Unicode math (×÷²³√π≤≥≠), "
+            "no raw newlines inside strings, always output full JSON."
         )
 
-        def _call_gemini(with_json_mime):
-            cfg = genai_types.GenerateContentConfig(
-                max_output_tokens=700,
-                temperature=0.4,
-                **({"response_mime_type": "application/json"} if with_json_mime else {}),
-            )
-            return gemini_generate(_gemini, contents=[prompt], config=cfg)
+        # ── 3-attempt escalating strategy ─────────────────────────────────
+        #   1. gemini-2.0-flash + JSON mime  (fastest, ~1-2 s)
+        #   2. gemini-2.0-flash free-form    (still fast, handles edge cases)
+        #   3. gemini-2.5-flash free-form    (thinking fallback, slower but powerful)
+        _FAST = 'models/gemini-2.0-flash'
+        _SLOW = 'models/gemini-2.5-flash'
+        attempts = [
+            (_FAST, True,  0.3),
+            (_FAST, False, 0.4),
+            (_SLOW, False, 0.4),
+        ]
 
-        # ── Attempt 1: JSON mime type (fast path) ──────────────────────────
         raw = ''
-        try:
-            resp1 = _call_gemini(with_json_mime=True)
-            raw = (resp1.text or '').strip()
-        except Exception:
-            pass   # fall through to attempt 2
+        last_exc = None
+        for model_name, with_mime, temp in attempts:
+            try:
+                cfg = genai_types.GenerateContentConfig(
+                    max_output_tokens=500,
+                    temperature=temp,
+                    **({"response_mime_type": "application/json"} if with_mime else {}),
+                )
+                resp = _gemini.models.generate_content(
+                    model=model_name, contents=[prompt], config=cfg)
+                raw = (resp.text or '').strip()
+                if raw and '{' in raw:
+                    app.logger.info(f'suggest_options: got JSON from {model_name} mime={with_mime}')
+                    break
+                else:
+                    app.logger.warning(
+                        f'suggest_options: {model_name} mime={with_mime} returned no JSON '
+                        f'(raw={raw[:80]!r}), trying next attempt')
+                    raw = ''
+            except Exception as exc:
+                last_exc = exc
+                app.logger.warning(f'suggest_options {model_name} mime={with_mime}: {exc}')
 
-        # ── Attempt 2: free-form if mime-type gave no usable JSON ──────────
         if not raw or '{' not in raw:
-            app.logger.warning('suggest_options: JSON-mime attempt gave no JSON, retrying free-form')
-            resp2 = _call_gemini(with_json_mime=False)
-            raw = (resp2.text or '').strip()
+            err_msg = str(last_exc) if last_exc else 'AI model returned no usable JSON'
+            return jsonify({'error': f'Could not generate options after 3 attempts. {err_msg}'}), 500
 
-        if not raw or '{' not in raw:
-            return jsonify({'error': 'AI model returned no JSON. Please try again.'}), 500
-
-        # ── Parse with the same robust extractor used for paper generation ──
+        # ── Parse with robust 5-stage extractor ───────────────────────────
         result = extract_json(raw)
 
         # Normalise: ensure options list has exactly 4 entries
@@ -3124,7 +3139,7 @@ def suggest_options():
         while len(opts) < 4:
             opts.append(f"{labels[len(opts)]}) —")
 
-        # Convert any residual LaTeX to Unicode (same pipeline as paper gen)
+        # Convert any residual LaTeX to Unicode
         cleaned_opts = []
         for i, opt in enumerate(opts[:4]):
             opt_text = _normalize_symbols(str(opt))
