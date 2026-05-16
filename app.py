@@ -605,21 +605,118 @@ def _fix_json_strings(text):
     return ''.join(result)
 
 
+def _repair_json_structure(text):
+    """Stage 6 repair: fix structural JSON errors common in AI-generated maths content.
+
+    Handles:
+    a) Missing comma between a string value and the next key
+       "Q5"↵  "text" → "Q5",↵  "text"
+    b) Missing comma between adjacent objects/arrays
+       }↵  { → },↵  {   and   ]↵  [ → ],↵  [
+    c) Unescaped inner double-quotes inside string values
+       "text": "value with "inner" quotes" → escaped version
+    """
+    # (a) Add missing commas: string-end followed by newline then string-start
+    #     Covers:  "value"\n  "key":  →  "value",\n  "key":
+    t = re.sub(r'"\s*\n(\s*)"', '",\n\\1"', text)
+
+    # (b) Add missing commas between adjacent objects / arrays
+    t = re.sub(r'}\s*\n(\s*){', '},\n\\1{', t)
+    t = re.sub(r']\s*\n(\s*)\[', '],\n\\1[', t)
+
+    # (c) Fix unescaped inner double-quotes.
+    # Heuristic: a `"` inside a JSON string that is followed by a word character
+    # (letter/digit) is almost certainly an inner quote, not the string terminator.
+    # We escape it to `\"`.  This handles cases like:
+    #   "The formula is "F = ma" where…"   →   "The formula is \"F = ma\" where…"
+    result = []
+    in_str = False
+    i = 0
+    while i < len(t):
+        c = t[i]
+        if not in_str:
+            result.append(c)
+            if c == '"':
+                in_str = True
+        else:
+            if c == '\\' and i + 1 < len(t):
+                result.append(c)
+                result.append(t[i + 1])
+                i += 2
+                continue
+            elif c == '"':
+                # Peek at what follows (skip whitespace)
+                j = i + 1
+                while j < len(t) and t[j] in ' \t':
+                    j += 1
+                nxt = t[j] if j < len(t) else ''
+                # If next non-space char is a word char → inner quote → escape
+                if nxt and (nxt.isalnum() or nxt in '-+_('):
+                    result.append('\\"')
+                else:
+                    result.append('"')
+                    in_str = False
+            else:
+                result.append(c)
+        i += 1
+    return ''.join(result)
+
+
+def _repair_truncated_json(text):
+    """Stage 7 repair: attempt to close a truncated JSON response.
+
+    Walks the text tracking open braces/brackets (respecting strings) and
+    appends the minimum closing tokens to make it structurally complete.
+    Then trims to the last top-level closing `}`.
+    """
+    stack = []
+    in_str = False
+    last_top_close = -1
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if in_str:
+            if c == '\\':
+                i += 2
+                continue
+            if c == '"':
+                in_str = False
+        else:
+            if c == '"':
+                in_str = True
+            elif c in '{[':
+                stack.append(c)
+            elif c in '}]':
+                if stack:
+                    stack.pop()
+                if not stack:
+                    last_top_close = i
+        i += 1
+
+    if not stack:
+        # Not truncated — return as-is (already balanced)
+        return text
+
+    # Close any open structures
+    closers = {'[': ']', '{': '}'}
+    tail = ''.join(closers[s] for s in reversed(stack))
+    repaired = text.rstrip() + tail
+    return repaired
+
+
 def extract_json(text):
     """Robustly extract and parse JSON from an AI model response.
 
-    Attempts five progressive strategies:
+    Attempts seven progressive strategies:
     1. Direct parse (response was already valid JSON).
     2. Strip markdown fences, then parse.
     3. Extract outermost { … } block, then parse.
-    4. Apply common structural fixes (trailing commas, NaN/Infinity/undefined),
-       then parse.
+    4. Fix trailing commas / NaN / Infinity, then parse.
     5. Fix unescaped control characters inside string values, then parse.
-    Raises JSONDecodeError only when all five strategies fail.
+    6. Fix structural issues: missing commas, unescaped inner quotes, then parse.
+    7. Attempt to close truncated JSON, then parse.
+    Raises JSONDecodeError only when all seven strategies fail.
     """
-    # Pre-processing: replace NaN/Infinity/undefined before any parse attempt.
-    # Python's json.loads silently accepts NaN (producing float('nan')) which
-    # would later cause json.dumps to emit invalid JSON.
     raw = re.sub(r'\b(NaN|-?Infinity|undefined)\b', 'null', text.strip())
 
     # ── Stage 1: direct parse ──────────────────────────────────────────────────
@@ -654,9 +751,25 @@ def extract_json(text):
     except json.JSONDecodeError:
         pass
 
-    # ── Stage 5: fix unescaped control chars in strings ───────────────────────
-    fully_fixed = _fix_json_strings(fixed)
-    return json.loads(fully_fixed)   # let this raise if still broken
+    # ── Stage 5: fix unescaped control chars / invalid escape sequences ───────
+    fixed = _fix_json_strings(fixed)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Stage 6: fix missing commas + unescaped inner quotes ──────────────────
+    fixed6 = _repair_json_structure(fixed)
+    fixed6 = re.sub(r',\s*([}\]])', r'\1', fixed6)   # trailing commas again
+    try:
+        return json.loads(fixed6)
+    except json.JSONDecodeError:
+        pass
+
+    # ── Stage 7: close truncated JSON then parse ──────────────────────────────
+    fixed7 = _repair_truncated_json(fixed6)
+    fixed7 = re.sub(r',\s*([}\]])', r'\1', fixed7)
+    return json.loads(fixed7)   # raise if still broken
 
 
 def _enforce_paper_specs(paper, question_types):
@@ -2831,7 +2944,7 @@ def api_version():
         except Exception:
             pass
     return jsonify({
-        'version':       '2026-05-17-v1',
+        'version':       '2026-05-17-v2',
         'primary_model': _GEMINI_MODELS[0],
         'model_chain':   _GEMINI_MODELS,
         'has_env_key':   has_env_key,
@@ -3490,12 +3603,14 @@ INSTRUCTIONS FOR GENERATION:
 10. CRITICAL — EXACT QUESTION COUNT: You MUST generate EXACTLY the number of questions specified for each section (see QUESTION PAPER STRUCTURE above). No more, no fewer. The total across all sections must be exactly {total_q_count} questions. Count each question carefully before finalising the JSON.
 11. For reading_passage and reading_poem sections: sub_questions MUST be a JSON array of objects — each object must have a "text" field (string) and a "marks" field (number). Do NOT use plain strings. The marks values across all sub_questions should sum to the section's marks-per-question. Example: "sub_questions": [{{"text": "What is the central theme of the passage?", "marks": 2}}, {{"text": "Why did the author use this metaphor? Explain.", "marks": 3}}]
 
-CRITICAL JSON RULES (the output must be valid JSON):
-- Do NOT use double-quote characters (") inside any string value. Use single quotes or rephrase.
-- Do NOT include literal newlines or tab characters inside any string value — keep each value on a single line.
-- Do NOT use backslash (\\) except for valid JSON escape sequences (\\", \\\\, \\n, \\t).
-- Every string must be properly terminated with a closing double-quote.
-- No trailing commas after the last element of arrays or objects.
+CRITICAL JSON RULES — violating any of these will break the output:
+- NEVER use double-quote characters (") inside any string value. Use single quotes (') or rephrase. Example: write  x equals 'y'  not  x equals "y".
+- NEVER put a literal newline or tab inside a string value — every string must be on ONE line.
+- NEVER use a backslash (\\) except for the valid JSON escapes \\", \\\\, \\n, \\t.
+- ALWAYS put a comma after every property value before the next property: {"a": 1, "b": 2} not {"a": 1 "b": 2}.
+- ALWAYS put a comma after every array/object element before the next: [1, 2, 3] not [1 2 3].
+- No trailing comma after the LAST element of an array or object.
+- Every opening {{ must have a matching closing }}, every [ must have a matching ].
 
 {"Reference the uploaded chapter content/images for question creation." if pil_images else ""}
 
@@ -3546,16 +3661,19 @@ Generate ALL {total_q_count} questions exactly as specified above. Each section 
         # Build Gemini content: images first, then the prompt text
         contents = pil_images + [prompt_text]
 
-        # Lower temperature for technical subjects to reduce hallucination in JSON
+        # Lower temperature for technical subjects to get more consistent JSON
         _TECHNICAL = {'Mathematics', 'Physics', 'Chemistry', 'Science', 'Accountancy',
                       'Computer Science', 'Information Technology'}
-        gen_temp = 0.4 if subject in _TECHNICAL else 0.6
+        gen_temp = 0.2 if subject == 'Mathematics' else (0.3 if subject in _TECHNICAL else 0.5)
 
         response = gemini_generate(
             gemini,
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                max_output_tokens=8192,   # 8 K is ample for a full paper; 20 K burns free-tier TPM quota
+                # 16 K allows a full 80-mark paper without truncation.
+                # For non-thinking models (2.0-flash / 2.0-flash-lite) output tokens
+                # are 1:1 against TPM — no hidden thinking-token overhead.
+                max_output_tokens=16000,
                 temperature=gen_temp,
                 # No response_mime_type — thinking models return empty/null with JSON mime;
                 # extract_json() handles free-form text robustly.
@@ -3743,9 +3861,8 @@ Be accurate and fair. Do not inflate or deflate marks."""
             gemini,
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                max_output_tokens=12000,
+                max_output_tokens=16000,
                 temperature=0.3,
-                response_mime_type='application/json',
             ),
         )
 
