@@ -478,18 +478,28 @@ def get_gemini_client():
     return genai.Client(api_key=api_key)
 
 
-# Models tried in order — 2.5 Flash first, fall back to 2.0 Flash if unavailable
-_GEMINI_MODELS = ['models/gemini-2.5-flash', 'models/gemini-2.0-flash']
+# Models tried in order on quota exhaustion.
+# Each model has an independent free-tier quota pool, so if one is exhausted
+# the next may still succeed.
+#   gemini-2.5-flash    — best quality, lowest free quota (thinking model)
+#   gemini-2.0-flash    — high quality, higher free quota
+#   gemini-2.0-flash-lite — lighter/faster, separate quota bucket
+#   gemini-1.5-flash    — older but reliable, separate quota bucket
+_GEMINI_MODELS = [
+    'models/gemini-2.5-flash',
+    'models/gemini-2.0-flash',
+    'models/gemini-2.0-flash-lite',
+    'models/gemini-1.5-flash',
+]
 
 
 def gemini_generate(client, contents, config, max_retries=3):
     """
     Call generate_content with retry logic:
     - 429 / RESOURCE_EXHAUSTED (quota): immediately skip to the next model — retrying
-      the same model won't help and just wastes time.
+      the same model won't help and just wastes time.  Tries all 4 models before giving up.
     - 503 / 500 / UNAVAILABLE / INTERNAL (transient): exponential backoff then next model.
     - Anything else: re-raise immediately (not retryable).
-    Falls back through _GEMINI_MODELS (2.5-flash → 2.0-flash).
     """
     _QUOTA     = ('429', 'RESOURCE_EXHAUSTED')
     _TRANSIENT = ('503', '500', 'UNAVAILABLE', 'INTERNAL')
@@ -514,10 +524,10 @@ def gemini_generate(client, contents, config, max_retries=3):
                     raise   # non-retryable (bad request, auth error, etc.)
 
                 if is_quota:
-                    # Quota exhausted — no point retrying same model; try next immediately
+                    is_last = (model == _GEMINI_MODELS[-1])
                     print(f'[GEMINI] {model} quota exhausted — '
-                          f'{"trying fallback model" if model != _GEMINI_MODELS[-1] else "all models exhausted"}')
-                    break   # exit retry loop, outer loop will try next model
+                          f'{"trying next model" if not is_last else "all models exhausted"}')
+                    break   # exit retry loop, outer loop tries next model
 
                 # Transient error — retry with exponential backoff
                 if attempt < max_retries:
@@ -527,7 +537,7 @@ def gemini_generate(client, contents, config, max_retries=3):
                     time.sleep(wait)
                 else:
                     print(f'[GEMINI] {model} exhausted {max_retries} retries — '
-                          f'{"trying fallback model" if model != _GEMINI_MODELS[-1] else "giving up"}')
+                          f'{"trying next model" if model != _GEMINI_MODELS[-1] else "giving up"}')
 
     raise last_err   # all models exhausted
 
@@ -3432,8 +3442,9 @@ Generate ALL {total_q_count} questions exactly as specified above. Each section 
             msg = ('The Gemini AI service is temporarily busy. '
                    'Please wait a few seconds and try again.')
         elif '429' in err_str or 'RESOURCE_EXHAUSTED' in err_str:
-            msg = ('AI quota exhausted on all available models. '
-                   'Please wait a minute and try again, or contact support if this persists.')
+            msg = ('AI quota exhausted. Please wait 1–2 minutes and try again. '
+                   'If this keeps happening, your API key may have hit its daily limit — '
+                   'get a free key at aistudio.google.com and update it in Settings.')
         else:
             msg = f'Generation failed: {err_str}'
         return jsonify({'error': msg}), 500
