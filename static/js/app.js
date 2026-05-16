@@ -525,63 +525,123 @@ function _restoreQuestionTypeInputs() {
 }
 
 /* ===== USER PROFILE (teacher name, school name, logo persistence) ===== */
-async function loadUserProfile() {
-  try {
-    const res = await fetch('/api/user-profile');
-    if (!res.ok) return;
-    const profile = await res.json();
+// localStorage keys for offline / fallback storage
+const _LS_TEACHER = 'ec_teacher_name';
+const _LS_SCHOOL  = 'ec_school_name';
+const _LS_LOGO    = 'ec_school_logo';
+// Max logo size to store in localStorage (~400 KB data-URL ≈ 300 KB image)
+const _LS_LOGO_MAX = 400 * 1024;
 
-    // Pre-fill teacher name if not already typed
-    const teacherInput = document.getElementById('teacher_name');
-    if (teacherInput && profile.teacher_name && !teacherInput.value.trim()) {
-      teacherInput.value = profile.teacher_name;
-      state.teacherName = profile.teacher_name;
+function _lsGet(key) { try { return localStorage.getItem(key) || ''; } catch { return ''; } }
+function _lsSet(key, val) { try { if (val) localStorage.setItem(key, val); } catch {} }
+function _lsDel(key) { try { localStorage.removeItem(key); } catch {} }
+
+/** Apply profile data (teacher name, school name, logo) to the form fields and state. */
+function _applyProfile(teacher, school, logo) {
+  if (teacher) {
+    state.teacherName = teacher;
+    const inp = document.getElementById('teacher_name');
+    if (inp && !inp.value.trim()) {
+      inp.value = teacher;
       const badge = document.getElementById('teacher-saved-badge');
       if (badge) badge.style.display = 'inline-flex';
     }
-
-    // Pre-fill school name if not already typed
-    const schoolInput = document.getElementById('school_name');
-    if (schoolInput && profile.school_name && !schoolInput.value.trim()) {
-      schoolInput.value = profile.school_name;
-      state.schoolName = profile.school_name;
+  }
+  if (school) {
+    state.schoolName = school;
+    const inp = document.getElementById('school_name');
+    if (inp && !inp.value.trim()) {
+      inp.value = school;
       const badge = document.getElementById('school-name-saved-badge');
       if (badge) badge.style.display = 'inline-flex';
     }
+  }
+  if (logo && !state.schoolLogoDataUrl) {
+    state.schoolLogoDataUrl = logo;
+    const img = document.getElementById('logo-preview-img');
+    if (img) img.src = logo;
+    const previewWrap = document.getElementById('logo-preview-wrap');
+    if (previewWrap) previewWrap.style.display = 'block';
+    const placeholder = document.getElementById('logo-upload-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+    const removeBtn = document.getElementById('logo-remove-btn');
+    if (removeBtn) removeBtn.style.display = 'inline-flex';
+    const savedNote = document.getElementById('logo-saved-note');
+    if (savedNote) savedNote.style.display = 'block';
+  }
+}
 
-    // Load saved logo if none already selected
-    if (profile.school_logo && !state.schoolLogoDataUrl) {
-      state.schoolLogoDataUrl = profile.school_logo;
-      const img = document.getElementById('logo-preview-img');
-      if (img) img.src = profile.school_logo;
-      const previewWrap = document.getElementById('logo-preview-wrap');
-      if (previewWrap) previewWrap.style.display = 'block';
-      const placeholder = document.getElementById('logo-upload-placeholder');
-      if (placeholder) placeholder.style.display = 'none';
-      const removeBtn = document.getElementById('logo-remove-btn');
-      if (removeBtn) removeBtn.style.display = 'inline-flex';
-      const savedNote = document.getElementById('logo-saved-note');
-      if (savedNote) savedNote.style.display = 'block';
+async function loadUserProfile() {
+  // 1. Load from localStorage immediately (instant, no network wait)
+  const lsTeacher = _lsGet(_LS_TEACHER);
+  const lsSchool  = _lsGet(_LS_SCHOOL);
+  const lsLogo    = _lsGet(_LS_LOGO);
+  if (lsTeacher || lsSchool || lsLogo) {
+    _applyProfile(lsTeacher, lsSchool, lsLogo);
+  }
+
+  // 2. Then load from server (may override with fresher data)
+  try {
+    const res = await fetch('/api/user-profile');
+    if (!res.ok) return;   // not authenticated — localStorage values are good enough
+    const p = await res.json();
+    const serverTeacher = p.teacher_name || '';
+    const serverSchool  = p.school_name  || '';
+    const serverLogo    = p.school_logo  || '';
+
+    // Server data wins; update localStorage cache so it stays fresh
+    if (serverTeacher) _lsSet(_LS_TEACHER, serverTeacher);
+    if (serverSchool)  _lsSet(_LS_SCHOOL,  serverSchool);
+    if (serverLogo)    { if (serverLogo.length <= _LS_LOGO_MAX) _lsSet(_LS_LOGO, serverLogo); }
+
+    // Apply server values (override the localStorage values if different)
+    if (serverTeacher || serverSchool || serverLogo) {
+      // Reset state so _applyProfile can overwrite with server data
+      if (serverLogo) state.schoolLogoDataUrl = '';
+      _applyProfile(serverTeacher, serverSchool, serverLogo);
     }
   } catch (e) {
-    // Silently ignore — profile is optional
+    // Network failure — localStorage values already applied above
   }
 }
 
 async function saveUserProfile(teacherName, schoolName, schoolLogoDataUrl) {
+  // Always persist non-empty values to localStorage immediately
+  if (teacherName)       _lsSet(_LS_TEACHER, teacherName);
+  if (schoolName)        _lsSet(_LS_SCHOOL,  schoolName);
+  if (schoolLogoDataUrl && schoolLogoDataUrl.length <= _LS_LOGO_MAX)
+    _lsSet(_LS_LOGO, schoolLogoDataUrl);
+
+  // Build server payload — only send non-empty values to avoid overwriting
+  // a previously-saved logo/name when the current state hasn't loaded it yet.
+  const payload = {};
+  if (teacherName)       payload.teacher_name = teacherName;
+  if (schoolName)        payload.school_name  = schoolName;
+  // Only send logo if we actually have one in state (prevents race-condition wipe)
+  if (schoolLogoDataUrl) payload.school_logo  = schoolLogoDataUrl;
+
+  if (Object.keys(payload).length === 0) return;  // nothing to save
+
   try {
     await fetch('/api/user-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        teacher_name: teacherName || '',
-        school_name:  schoolName  || '',
-        school_logo:  schoolLogoDataUrl || '',
-      }),
+      body: JSON.stringify(payload),
     });
   } catch (e) {
-    // Silently ignore — saving profile is best-effort
+    // Silently ignore — localStorage already saved above
   }
+}
+
+/** Call this when the user explicitly removes the school logo. */
+function clearSavedLogo() {
+  _lsDel(_LS_LOGO);
+  try {
+    fetch('/api/user-profile', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ school_logo: '' }),
+    });
+  } catch {}
 }
 
 /* ===== SCHOOL LOGO ===== */
@@ -612,6 +672,8 @@ function removeLogo() {
   document.getElementById('logo-remove-btn').style.display = 'none';
   const savedNote = document.getElementById('logo-saved-note');
   if (savedNote) savedNote.style.display = 'none';
+  // Explicitly clear the saved logo from localStorage and server
+  clearSavedLogo();
 }
 
 function goToStep2() {
@@ -1403,7 +1465,7 @@ function renderQuestionPaper(paper) {
         // Passage text + passage box only — sub-questions rendered as sibling rows below
         qBody += formatFormula(q.text || '');
         if (q.passage) {
-          qBody += `<div class="qp-passage">${escapeHtml(q.passage)}</div>`;
+          qBody += `<div class="qp-passage">${formatFormula(q.passage)}</div>`;
         }
         if (q.sub_questions && q.sub_questions.length > 0) {
           qBody += `<div class="qp-subq-label">Answer the following questions:</div>`;
@@ -1421,6 +1483,12 @@ function renderQuestionPaper(paper) {
       }
 
       qBody += `</div>`;  // close qp-q-text
+
+      // Question image (if one was attached via the edit panel)
+      if (q.image_data_url) {
+        qBody += `<div class="qp-q-image-wrap"><img src="${q.image_data_url}" class="qp-q-image" alt="Question diagram" /></div>`;
+      }
+
       html += qBody;
 
       // Marks label + edit button (right side of main row)
@@ -1872,8 +1940,18 @@ function editQuestion(secIdx, qIdx) {
   const textEl = document.getElementById(`qtext-${secIdx}-${qIdx}`);
   if (!textEl) return;
   const currentText = q.text || '';
+  const hasImg = !!q.image_data_url;
   textEl.innerHTML = `
-    <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}" rows="3">${currentText.replace(/</g,'&lt;')}</textarea>
+    <textarea class="q-edit-textarea" id="qedit-${secIdx}-${qIdx}" rows="4">${currentText.replace(/</g,'&lt;')}</textarea>
+    <div class="q-img-upload-row">
+      <label class="q-img-upload-label">
+        <span>&#128247; Add/replace diagram image <span class="q-img-optional">(optional)</span></span>
+        <input type="file" accept="image/*" class="q-img-file-input" id="qimg-${secIdx}-${qIdx}"
+               onchange="previewQuestionImage(${secIdx},${qIdx},this)" />
+      </label>
+      ${hasImg ? `<button class="btn btn-sm q-img-clear-btn" onclick="clearQuestionImage(${secIdx},${qIdx})">&#10005; Remove image</button>` : ''}
+    </div>
+    ${hasImg ? `<div class="q-img-preview-wrap"><img src="${q.image_data_url}" class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>` : `<div class="q-img-preview-wrap" id="qimgprev-wrap-${secIdx}-${qIdx}" style="display:none"><img class="q-img-preview" id="qimgprev-${secIdx}-${qIdx}" /></div>`}
     <div class="q-edit-btns">
       <button class="btn btn-primary btn-sm" onclick="saveQuestion(${secIdx},${qIdx})">&#10003; Save</button>
       <button class="btn btn-outline btn-sm" onclick="cancelEditQuestion()">Cancel</button>
@@ -1882,15 +1960,50 @@ function editQuestion(secIdx, qIdx) {
   document.getElementById(`qedit-${secIdx}-${qIdx}`).focus();
 }
 
+function previewQuestionImage(secIdx, qIdx, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    // Store temporarily in the question object (will be committed on Save)
+    state.questionPaper.sections[secIdx].questions[qIdx]._pendingImage = dataUrl;
+    // Show preview
+    const prevImg = document.getElementById(`qimgprev-${secIdx}-${qIdx}`);
+    if (prevImg) prevImg.src = dataUrl;
+    const prevWrap = document.getElementById(`qimgprev-wrap-${secIdx}-${qIdx}`);
+    if (prevWrap) prevWrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearQuestionImage(secIdx, qIdx) {
+  state.questionPaper.sections[secIdx].questions[qIdx].image_data_url = '';
+  state.questionPaper.sections[secIdx].questions[qIdx]._pendingImage  = '';
+  renderQuestionPaper(state.questionPaper);
+  // Re-open edit mode so user can continue editing
+  editQuestion(secIdx, qIdx);
+}
+
 function saveQuestion(secIdx, qIdx) {
   const ta = document.getElementById(`qedit-${secIdx}-${qIdx}`);
   if (!ta) return;
-  state.questionPaper.sections[secIdx].questions[qIdx].text = ta.value.trim();
+  const q = state.questionPaper.sections[secIdx].questions[qIdx];
+  q.text = ta.value.trim();
+  // Commit any pending image
+  if (q._pendingImage !== undefined) {
+    q.image_data_url = q._pendingImage || '';
+    delete q._pendingImage;
+  }
   renderQuestionPaper(state.questionPaper);
   showToast('Question updated!', 'success');
 }
 
 function cancelEditQuestion() {
+  // Clean up any pending image that wasn't saved
+  (state.questionPaper?.sections || []).forEach(sec =>
+    (sec.questions || []).forEach(q => { delete q._pendingImage; })
+  );
   renderQuestionPaper(state.questionPaper);
 }
 

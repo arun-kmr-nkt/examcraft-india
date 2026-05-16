@@ -3598,6 +3598,23 @@ def download_word():
                 tab_run.font.size = Pt(9)
                 tab_run.font.color.rgb = RGBColor(113, 128, 150)
 
+                # Insert attached image (if any) below the question text
+                img_data_url = q.get('image_data_url', '')
+                if img_data_url and ',' in img_data_url:
+                    try:
+                        import base64 as _b64
+                        img_b64 = img_data_url.split(',', 1)[1]
+                        img_bytes = _b64.b64decode(img_b64)
+                        img_stream = io.BytesIO(img_bytes)
+                        img_para = doc.add_paragraph()
+                        img_para.paragraph_format.space_before = Pt(4)
+                        img_para.paragraph_format.space_after  = Pt(4)
+                        img_para.paragraph_format.left_indent  = Inches(0.2)
+                        img_run = img_para.add_run()
+                        img_run.add_picture(img_stream, width=Inches(4))
+                    except Exception:
+                        pass  # silently ignore malformed image data
+
                 # Type-specific extras
                 if q_type == 'mcq' and q.get('options'):
                     for idx, opt in enumerate(q['options']):
@@ -3781,6 +3798,23 @@ with app.app_context():
             if 'archived_at' not in qp_cols:
                 try:
                     conn.execute(sa_text('ALTER TABLE question_papers ADD COLUMN archived_at DATETIME'))
+                    conn.commit()
+                except Exception:
+                    pass
+
+    # Migrate user_profiles table — ensure school_logo column exists
+    if 'user_profiles' in insp.get_table_names():
+        up_cols = {c['name'] for c in insp.get_columns('user_profiles')}
+        with db.engine.connect() as conn:
+            if 'school_logo' not in up_cols:
+                try:
+                    conn.execute(sa_text('ALTER TABLE user_profiles ADD COLUMN school_logo TEXT'))
+                    conn.commit()
+                except Exception:
+                    pass
+            if 'updated_at' not in up_cols:
+                try:
+                    conn.execute(sa_text('ALTER TABLE user_profiles ADD COLUMN updated_at DATETIME'))
                     conn.commit()
                 except Exception:
                     pass
