@@ -14,6 +14,7 @@ const state = {
   examDate: '',
   syllabusVersion: 'new',
   selectedChapters: [],
+  selectedGrammarTopics: [],
   chapterImages: [],
   questionTypes: {},
   questionPaper: null,
@@ -773,6 +774,8 @@ async function loadChapters() {
     }
 
     container.innerHTML = '';
+    // Reset grammar topics each time chapters are (re)loaded for a new subject/class
+    state.selectedGrammarTopics = [];
     if (!data.chapters || data.chapters.length === 0) {
       container.innerHTML = '<div class="loading-chapters">No chapters found for this subject/class.</div>';
     } else {
@@ -794,10 +797,82 @@ async function loadChapters() {
         container.appendChild(item);
       });
     }
+    renderGrammarTopics(data.grammar_topics || []);
     await loadCustomChapters();
   } catch (e) {
     container.innerHTML = '<div class="loading-chapters">Error loading chapters. Please try again.</div>';
+    renderGrammarTopics([]);
   }
+}
+
+/* ── Grammar Topics (English / Hindi) ── */
+function renderGrammarTopics(topics) {
+  const wrap = document.getElementById('grammar-topics-section');
+  if (!wrap) return;
+  if (!topics || topics.length === 0) {
+    wrap.style.display = 'none';
+    state.selectedGrammarTopics = [];
+    updateChapterCount();
+    return;
+  }
+  wrap.style.display = 'block';
+  const container = document.getElementById('grammar-topics-container');
+  container.innerHTML = '';
+  // Re-apply any previously selected topics
+  topics.forEach((topic, idx) => {
+    const alreadySelected = state.selectedGrammarTopics.includes(topic);
+    const item = document.createElement('div');
+    item.className = 'chapter-item grammar-topic-item' + (alreadySelected ? ' selected' : '');
+    item.dataset.grammarTopic = topic;
+    item.innerHTML = `
+      <input type="checkbox" id="gt-${idx}" ${alreadySelected ? 'checked' : ''}
+             onchange="toggleGrammarTopic('${escapeAttr(topic)}', this.checked)" />
+      <span>${escapeHtml(topic)}</span>
+    `;
+    item.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') {
+        const cb = item.querySelector('input');
+        cb.checked = !cb.checked;
+        toggleGrammarTopic(topic, cb.checked);
+      }
+    });
+    container.appendChild(item);
+  });
+  updateChapterCount();
+}
+
+function toggleGrammarTopic(topic, checked) {
+  if (checked) {
+    if (!state.selectedGrammarTopics.includes(topic)) state.selectedGrammarTopics.push(topic);
+  } else {
+    state.selectedGrammarTopics = state.selectedGrammarTopics.filter(t => t !== topic);
+  }
+  document.querySelectorAll('.grammar-topic-item').forEach(item => {
+    if (item.dataset.grammarTopic === topic) item.classList.toggle('selected', checked);
+  });
+  updateChapterCount();
+}
+
+function selectAllGrammarTopics() {
+  document.querySelectorAll('.grammar-topic-item').forEach(item => {
+    const cb = item.querySelector('input');
+    if (cb) {
+      cb.checked = true;
+      item.classList.add('selected');
+      const t = item.dataset.grammarTopic;
+      if (!state.selectedGrammarTopics.includes(t)) state.selectedGrammarTopics.push(t);
+    }
+  });
+  updateChapterCount();
+}
+
+function deselectAllGrammarTopics() {
+  document.querySelectorAll('.grammar-topic-item').forEach(item => {
+    const cb = item.querySelector('input');
+    if (cb) { cb.checked = false; item.classList.remove('selected'); }
+  });
+  state.selectedGrammarTopics = [];
+  updateChapterCount();
 }
 
 /* ── Custom chapter localStorage helpers (fallback for unauthenticated users) ── */
@@ -962,8 +1037,11 @@ function deselectAllChapters() {
 }
 
 function updateChapterCount() {
-  document.getElementById('chapter-count').textContent =
-    `${state.selectedChapters.length} chapter${state.selectedChapters.length !== 1 ? 's' : ''} selected`;
+  const cCount = state.selectedChapters.length;
+  const gCount = state.selectedGrammarTopics.length;
+  let label = `${cCount} chapter${cCount !== 1 ? 's' : ''} selected`;
+  if (gCount > 0) label += `, ${gCount} grammar topic${gCount !== 1 ? 's' : ''}`;
+  document.getElementById('chapter-count').textContent = label;
 }
 
 /* ===== CHAPTER IMAGE UPLOAD ===== */
@@ -1309,7 +1387,8 @@ async function generatePaper() {
     formData.append('teacher_name', state.teacherName);
     formData.append('school_name', state.schoolName);
     formData.append('exam_date', state.examDate || '');
-    formData.append('chapters', JSON.stringify(state.selectedChapters));
+    const _allChapters = [...state.selectedChapters, ...state.selectedGrammarTopics];
+    formData.append('chapters', JSON.stringify(_allChapters));
     formData.append('question_types', JSON.stringify(qt));
 
     state.chapterImages.forEach(file => formData.append('chapter_images', file));
@@ -1963,6 +2042,18 @@ function editQuestion(secIdx, qIdx) {
              oninput="document.getElementById('qimgsize-val-${secIdx}-${qIdx}').textContent=this.value+'%'" />
       <span style="font-size:0.75rem;color:var(--text-secondary)">Small&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Large</span>
     </div>
+    ${(()=>{
+      // Find the current answer from the answer key
+      const qId = q.q_id || '';
+      const akEntry = (state.questionPaper.answer_key || []).find(a => a.q_id === qId);
+      if (!akEntry) return '';
+      const currentAnswer = akEntry.answer || '';
+      return `
+        <div class="q-answer-edit-row">
+          <label class="q-answer-edit-label">&#9989; Answer Key Entry <span class="q-img-optional">(update if question changed)</span></label>
+          <textarea class="q-answer-edit-textarea" id="qanswer-${secIdx}-${qIdx}" rows="2" placeholder="Enter correct answer...">${currentAnswer.replace(/</g,'&lt;')}</textarea>
+        </div>`;
+    })()}
     <div class="q-edit-btns">
       <button class="btn btn-primary btn-sm" onclick="saveQuestion(${secIdx},${qIdx})">&#10003; Save</button>
       <button class="btn btn-outline btn-sm" onclick="cancelEditQuestion()">Cancel</button>
@@ -2013,6 +2104,13 @@ function saveQuestion(secIdx, qIdx) {
   if (q.image_data_url) {
     const slider = document.getElementById(`qimgslider-${secIdx}-${qIdx}`);
     if (slider) q.image_size = parseInt(slider.value, 10) || 60;
+  }
+  // Update answer key entry if user edited the answer
+  const answerTa = document.getElementById(`qanswer-${secIdx}-${qIdx}`);
+  if (answerTa && state.questionPaper.answer_key) {
+    const qId = q.q_id || '';
+    const akEntry = state.questionPaper.answer_key.find(a => a.q_id === qId);
+    if (akEntry) akEntry.answer = answerTa.value.trim();
   }
   renderQuestionPaper(state.questionPaper);
   showToast('Question updated!', 'success');

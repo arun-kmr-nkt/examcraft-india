@@ -2051,6 +2051,115 @@ SUBJECTS_BY_CLASS = {
 # been updated. These are offered as an alternative when has_legacy is true.
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ── Grammar Topics for Language subjects (English & Hindi) ────────────────────
+# Used by /api/chapters to return topic choices alongside literature chapters.
+GRAMMAR_TOPICS = {
+    "English": {
+        "1":  ["Naming Words (Nouns)", "Action Words (Verbs)", "Describing Words (Adjectives)",
+               "One and Many (Singular/Plural)", "Pronouns (He/She/It/They)",
+               "Capital Letters and Full Stops"],
+        "2":  ["Types of Nouns", "Personal Pronouns", "Action Words and Helping Verbs",
+               "Adjectives (Colour/Size/Number)", "Singular and Plural",
+               "Question Words (Wh- Words)", "Punctuation (Comma/Full Stop/Question Mark)"],
+        "3":  ["Common and Proper Nouns", "Personal Pronouns", "Adjectives and Degrees",
+               "Verbs – Present and Past Tense", "Adverbs (How/When/Where)",
+               "Prepositions (in/on/at/under/near)", "Conjunctions (and/but/or)",
+               "Punctuation and Capital Letters", "Short Composition (3-5 sentences)"],
+        "4":  ["Nouns (Common/Proper/Collective/Abstract)", "Pronouns", "Adjective Degrees (Comparison)",
+               "Verb Tenses (Simple Present/Past/Future)", "Adverbs", "Prepositions",
+               "Conjunctions", "Direct Speech and Punctuation",
+               "Informal Letter Writing", "Paragraph Writing"],
+        "5":  ["Noun and Its Kinds", "Pronoun Types (Personal/Demonstrative/Interrogative)",
+               "Adjective Degrees (Positive/Comparative/Superlative)", "Tenses (Simple and Continuous)",
+               "Adverbs (Manner/Time/Place/Degree)", "Prepositions", "Conjunctions",
+               "Simple and Compound Sentences", "Formal and Informal Letter Writing", "Paragraph Writing"],
+        "6":  ["Nouns (Number and Gender)", "Pronouns", "Adjectives", "Articles (a/an/the)",
+               "Verbs and Tenses (Simple Present/Past/Future)", "Adverbs", "Prepositions",
+               "Conjunctions", "Types of Sentences (Simple/Compound/Complex)",
+               "Punctuation", "Letter Writing", "Paragraph/Story Writing"],
+        "7":  ["Tenses (Simple and Continuous)", "Noun (Possessive)", "Pronoun Types",
+               "Adjective Degrees", "Adverbs", "Articles", "Prepositions", "Conjunctions",
+               "Active and Passive Voice (Introduction)", "Direct and Indirect Speech (Statements)",
+               "Paragraph Writing", "Letter Writing (Formal/Informal)"],
+        "8":  ["All Tenses (Simple/Continuous/Perfect)", "Active and Passive Voice",
+               "Direct and Indirect Speech (Statements/Questions/Commands)",
+               "Adjectives and Adverbs (Comparison)", "Prepositions", "Conjunctions",
+               "Punctuation and Editing", "Omission Exercises",
+               "Letter Writing (Formal/Informal)", "Paragraph Writing", "Notice Writing"],
+        "9":  ["Tenses (All Forms)", "Active and Passive Voice",
+               "Direct and Indirect Speech", "Modals (can/could/may/might/must/should/would)",
+               "Determiners and Articles", "Prepositions", "Subject-Verb Agreement",
+               "Gap Filling", "Error Correction and Editing", "Sentence Reordering",
+               "Notice Writing", "Message Writing",
+               "Formal Letter Writing (Complaint/Inquiry)", "Article Writing"],
+        "10": ["Tenses", "Active and Passive Voice", "Narration (Direct/Indirect)",
+               "Modals", "Determiners", "Prepositions", "Subject-Verb Agreement",
+               "Sentence Transformation", "Rearranging Sentences",
+               "Gap Filling", "Editing and Omission",
+               "Formal Letter Writing", "Article Writing", "Report Writing"],
+        "11": ["Tenses and Aspect", "Voice (Active and Passive)", "Narration (Direct and Indirect)",
+               "Modals", "Determiners", "Prepositions", "Gap Filling",
+               "Sentence Transformation", "Note Making and Summary",
+               "Formal Letter Writing", "Article Writing",
+               "Job Application and Resume Writing"],
+        "12": ["Tenses", "Active and Passive Voice", "Narration (Direct/Indirect)",
+               "Modals", "Determiners", "Gap Filling", "Sentence Rearrangement",
+               "Editing and Proofreading", "Note Making and Summary",
+               "Formal Letter Writing", "Article Writing",
+               "Speech and Debate Writing", "Report Writing",
+               "Classified Advertisements", "Job Application"],
+    },
+    "Hindi": {
+        "1":  ["वर्णमाला एवं उच्चारण", "मात्राएँ (अ से अः)", "सरल शब्द निर्माण",
+               "लिंग (पुल्लिंग / स्त्रीलिंग)", "वचन (एकवचन / बहुवचन)", "विलोम शब्द"],
+        "2":  ["वर्ण-विचार", "संज्ञा (नाम)", "सर्वनाम", "क्रिया (काम करना)",
+               "लिंग एवं वचन", "विपरीतार्थक शब्द", "श्रुतलेख"],
+        "3":  ["संज्ञा और उसके भेद", "सर्वनाम", "विशेषण (गुण / रंग / संख्या)",
+               "क्रिया और काल", "लिंग-वचन", "विलोम शब्द", "पर्यायवाची शब्द",
+               "अनुच्छेद लेखन"],
+        "4":  ["संज्ञा", "सर्वनाम", "विशेषण", "क्रिया",
+               "काल (वर्तमान / भूत / भविष्यत्)", "लिंग-वचन",
+               "मुहावरे", "पत्र लेखन (अनौपचारिक)", "अनुच्छेद लेखन"],
+        "5":  ["संज्ञा के भेद", "सर्वनाम", "विशेषण (तुलनात्मक)", "क्रिया एवं काल",
+               "कारक", "विलोम एवं पर्यायवाची शब्द",
+               "मुहावरे एवं लोकोक्तियाँ", "पत्र लेखन", "निबंध लेखन"],
+        "6":  ["संज्ञा और उसके भेद", "सर्वनाम", "विशेषण", "क्रिया",
+               "काल (वर्तमान / भूत / भविष्यत्)", "कारक एवं विभक्ति",
+               "विलोम शब्द", "पर्यायवाची शब्द",
+               "मुहावरे एवं लोकोक्तियाँ", "पत्र लेखन", "अनुच्छेद लेखन"],
+        "7":  ["संज्ञा", "सर्वनाम", "विशेषण", "क्रिया-विशेषण",
+               "कारक", "काल", "वाच्य (परिचय)", "संधि (परिचय)", "समास (परिचय)",
+               "मुहावरे एवं लोकोक्तियाँ", "अलंकार (उपमा / रूपक)",
+               "पत्र लेखन", "निबंध लेखन", "अनुच्छेद लेखन"],
+        "8":  ["संधि (स्वर / व्यंजन / विसर्ग)", "समास (सभी भेद)",
+               "कारक एवं विभक्तियाँ", "काल (सभी भेद)",
+               "वाच्य (कर्तृवाच्य / कर्मवाच्य / भाववाच्य)",
+               "अलंकार (उपमा / रूपक / उत्प्रेक्षा / अनुप्रास / यमक)",
+               "मुहावरे एवं लोकोक्तियाँ",
+               "पत्र लेखन", "निबंध लेखन", "अनुच्छेद लेखन", "संवाद लेखन"],
+        "9":  ["संधि", "समास", "कारक", "काल एवं क्रिया", "वाच्य",
+               "अलंकार (शब्दालंकार / अर्थालंकार)", "रस और उनके भेद",
+               "छन्द (दोहा / सोरठा / चौपाई)",
+               "मुहावरे एवं लोकोक्तियाँ", "अपठित गद्यांश",
+               "पत्र लेखन", "निबंध लेखन", "संवाद लेखन"],
+        "10": ["संधि", "समास", "कारक", "वाच्य (परिवर्तन सहित)",
+               "अलंकार", "रस", "छन्द",
+               "मुहावरे एवं लोकोक्तियाँ",
+               "अपठित गद्यांश एवं पद्यांश",
+               "पत्र लेखन", "निबंध लेखन", "अनुच्छेद लेखन", "संवाद लेखन"],
+        "11": ["संधि", "समास", "अलंकार", "रस", "छन्द", "मुहावरे", "वाच्य", "काल",
+               "अपठित बोध (गद्यांश / पद्यांश)",
+               "निबंध लेखन", "पत्र एवं प्रार्थना पत्र",
+               "प्रतिवेदन (Report Writing)", "विज्ञापन लेखन",
+               "संवाद लेखन", "आत्मकथा लेखन"],
+        "12": ["संधि", "समास", "अलंकार", "रस", "छन्द",
+               "मुहावरे एवं लोकोक्तियाँ", "वाच्य", "काल",
+               "अपठित बोध (गद्यांश / पद्यांश)",
+               "निबंध लेखन", "पत्र लेखन", "प्रतिवेदन",
+               "विज्ञापन लेखन", "आवेदन पत्र", "संवाद लेखन"],
+    },
+}
+
 NCERT_CHAPTERS_LEGACY = {
     "Mathematics": {
         # Old Ganita Prakash was not used for class 6; new syllabus since 2024-25
@@ -2594,7 +2703,11 @@ def get_chapters():
     )
 
     chapters = _extract_chapters(subject, class_num, version=syllabus_version)
-    return jsonify({'chapters': chapters, 'has_legacy': has_legacy})
+    grammar_topics = []
+    if subject in GRAMMAR_TOPICS:
+        grammar_topics = GRAMMAR_TOPICS[subject].get(class_num, [])
+    return jsonify({'chapters': chapters, 'has_legacy': has_legacy,
+                    'grammar_topics': grammar_topics})
 
 
 @app.route('/api/custom-chapters', methods=['GET'])

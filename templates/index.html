@@ -361,6 +361,17 @@
             <div id="custom-chapters-container" class="chapters-grid"></div>
           </div>
 
+          <div id="grammar-topics-section" style="display:none;">
+            <div class="grammar-section-header">
+              <span>&#128218; Grammar Topics</span>
+              <div class="grammar-section-actions">
+                <button class="btn btn-outline btn-sm" onclick="selectAllGrammarTopics()">Select All</button>
+                <button class="btn btn-outline btn-sm" onclick="deselectAllGrammarTopics()">Deselect All</button>
+              </div>
+            </div>
+            <div id="grammar-topics-container" class="chapters-grid"></div>
+          </div>
+
           <div class="add-custom-chapter-row">
             <input type="text" id="custom-chapter-input" placeholder="Add a custom chapter..." onkeydown="if(event.key==='Enter') addCustomChapter()" />
             <button class="btn btn-outline btn-sm" onclick="addCustomChapter()">&#43; Add Chapter</button>
