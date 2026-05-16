@@ -1513,8 +1513,18 @@ function renderQuestionPaper(paper) {
 
       let qBody = `<div class="qp-q-text" id="qtext-${secIdx}-${qIdx}">`;
 
+      // Pre-build image HTML — injected INSIDE qp-q-text so it sits in the
+      // text column (flex:1), not as a separate flex sibling in qp-question-row.
+      const _hasQImg = !!q.image_data_url;
+      const _imgW    = (q.image_size || 60) + '%';
+      const _imgHtml = _hasQImg
+        ? `<div class="qp-q-image-wrap"><img src="${q.image_data_url}" class="qp-q-image" style="width:${_imgW};max-width:${_imgW}" alt="Question diagram" /></div>`
+        : '';
+
       if (type === 'mcq' || type === 'assertion_reason') {
         qBody += formatFormula(q.text || '');
+        // Image goes BETWEEN question text and options
+        qBody += _imgHtml;
         if (q.options && q.options.length > 0) {
           qBody += `<div class="qp-options">`;
           q.options.forEach(opt => { qBody += `<div class="qp-option">${formatFormula(opt)}</div>`; });
@@ -1523,6 +1533,7 @@ function renderQuestionPaper(paper) {
       } else if (type === 'fill_blank') {
         const text = formatFormula(q.text || '').replace(/_+/g, '<span class="qp-blank">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>');
         qBody += text;
+        qBody += _imgHtml;
       } else if (type === 'match') {
         qBody += formatFormula(q.text || '');
         if (q.column_a && q.column_b) {
@@ -1536,10 +1547,13 @@ function renderQuestionPaper(paper) {
           }
           qBody += `</div>`;
         }
+        qBody += _imgHtml;
       } else if (type === 'true_false') {
         qBody += formatFormula(q.text || '') + ' &nbsp; <strong>[True / False]</strong>';
+        qBody += _imgHtml;
       } else if (type === 'map_work') {
         qBody += formatFormula(q.text || '') + '<div class="qp-map-hint">[Refer to outline map provided]</div>';
+        qBody += _imgHtml;
       } else if (_isPassage) {
         // Passage text + passage box only — sub-questions rendered as sibling rows below
         qBody += formatFormula(q.text || '');
@@ -1549,6 +1563,7 @@ function renderQuestionPaper(paper) {
         if (q.sub_questions && q.sub_questions.length > 0) {
           qBody += `<div class="qp-subq-label">Answer the following questions:</div>`;
         }
+        qBody += _imgHtml;
       } else if (type === 'geometry_diagram') {
         qBody += formatFormula(q.text || '');
         if (q.figure_description) {
@@ -1557,17 +1572,13 @@ function renderQuestionPaper(paper) {
             <div class="qp-figure-desc">${escapeHtml(q.figure_description)}</div>
           </div>`;
         }
+        qBody += _imgHtml;
       } else {
         qBody += formatFormula(q.text || '');
+        qBody += _imgHtml;
       }
 
-      qBody += `</div>`;  // close qp-q-text
-
-      // Question image (if one was attached via the edit panel)
-      if (q.image_data_url) {
-        const _imgW = (q.image_size || 60) + '%';
-        qBody += `<div class="qp-q-image-wrap"><img src="${q.image_data_url}" class="qp-q-image" style="width:${_imgW};max-width:${_imgW}" alt="Question diagram" /></div>`;
-      }
+      qBody += `</div>`;  // close qp-q-text — image is already inside, no extra block needed
 
       html += qBody;
 
