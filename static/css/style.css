@@ -1029,18 +1029,6 @@ body {
   font-weight: 600;
   color: var(--primary);
 }
-.q-suggest-btn {
-  font-size: 0.78rem;
-  padding: 0.25rem 0.7rem;
-  border-color: var(--primary);
-  color: var(--primary);
-  background: white;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.q-suggest-btn:hover:not(:disabled) { background: #e8ecff; }
-.q-suggest-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .q-option-edit-row {
   display: flex;
@@ -1071,15 +1059,7 @@ body {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.12);
 }
-.q-suggest-hint {
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  background: #fff8e1;
-  border-left: 3px solid #f6c90e;
-  padding: 0.35rem 0.6rem;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  margin: 0.4rem 0 0.5rem;
-}
+
 .q-correct-answer-row {
   display: flex;
   align-items: center;
