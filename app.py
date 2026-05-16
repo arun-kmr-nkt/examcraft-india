@@ -3062,6 +3062,7 @@ def suggest_options():
     question_txt = (data.get('question') or '').strip()
     subject      = (data.get('subject')  or '').strip()
     class_num    = str(data.get('class_num') or '').strip()
+    q_type       = (data.get('question_type') or 'mcq').strip().lower()
 
     if not question_txt:
         return jsonify({'error': 'question text is required'}), 400
@@ -3070,30 +3071,55 @@ def suggest_options():
     if not _gemini:
         return jsonify({'error': 'AI service not configured'}), 503
 
+    is_mcq = q_type in ('mcq', 'assertion_reason')
+
     try:
-        # ── Pre-clean question text: strip LaTeX / caret notation so model
-        #    doesn't get confused and return empty output ───────────────────
+        # ── Pre-clean question text: strip LaTeX / caret notation ─────────
         q_clean = _normalize_symbols(question_txt)
         q_clean = re.sub(r'\^\{([^}]+)\}', r'^\1', q_clean)   # ^{6} → ^6
         q_clean = re.sub(r'_\{([^}]+)\}',  r'_\1', q_clean)   # _{n} → _n
-        q_clean = re.sub(r'\\[a-zA-Z]+',   ' ',    q_clean)   # strip remaining LaTeX cmds
+        q_clean = re.sub(r'\\[a-zA-Z]+',   ' ',    q_clean)   # strip LaTeX cmds
         q_clean = q_clean.strip()
 
-        prompt = (
-            f"Class {class_num} {subject} MCQ — generate 4 options for this question:\n"
-            f"Q: {q_clean}\n\n"
-            "Return ONLY this JSON (no markdown, no extra text):\n"
-            '{"options":["A) ...","B) ...","C) ...","D) ..."],'
-            '"correct":"A","explanation":"one sentence"}\n\n'
-            "Rules: exactly 4 options, only one correct, correct= single letter A/B/C/D, "
-            "no LaTeX backslashes, use Unicode math (×÷²³√π≤≥≠), "
-            "no raw newlines inside strings, always output full JSON."
-        )
+        if is_mcq:
+            prompt = (
+                f"Class {class_num} {subject} MCQ — generate 4 options for this question:\n"
+                f"Q: {q_clean}\n\n"
+                "Return ONLY this JSON (no markdown, no extra text):\n"
+                '{"options":["A) ...","B) ...","C) ...","D) ..."],'
+                '"correct":"A","explanation":"one sentence"}\n\n'
+                "Rules: exactly 4 options, only one correct, correct= single letter A/B/C/D, "
+                "no LaTeX backslashes, use Unicode math (×÷²³√π≤≥≠), "
+                "no raw newlines inside strings, always output full JSON."
+            )
+        else:
+            # Map section type to a human-readable label and length hint
+            _type_labels = {
+                'short_answer':    'Short Answer (2–3 sentences)',
+                'long_answer':     'Long Answer (4–6 sentences)',
+                'fill_blanks':     'Fill in the Blank — provide only the missing word or phrase',
+                'true_false':      'True/False — answer must start with True or False then explain briefly',
+                'one_word':        'One Word Answer — single word or very short phrase',
+                'match_following': 'Match the Following — list each correct pair on one line',
+                'diagram':         'Diagram/Labelling — describe what labels/annotations should appear',
+                'case_study':      'Case Study Answer — detailed explanation with examples',
+                'assertion_reason':'Assertion-Reason — state which option (A/B/C/D) is correct and why',
+            }
+            type_label = _type_labels.get(q_type, 'Short Answer (concise, clear)')
+
+            prompt = (
+                f"Class {class_num} {subject} — {type_label}:\n"
+                f"Q: {q_clean}\n\n"
+                "Return ONLY this JSON (no markdown, no extra text):\n"
+                '{"answer":"correct answer here","explanation":"one sentence why"}\n\n'
+                "Rules: no LaTeX backslashes, use Unicode math (×÷²³√π≤≥≠), "
+                "no raw newlines inside strings, always output full JSON."
+            )
 
         # ── 3-attempt escalating strategy ─────────────────────────────────
         #   1. gemini-2.0-flash + JSON mime  (fastest, ~1-2 s)
-        #   2. gemini-2.0-flash free-form    (still fast, handles edge cases)
-        #   3. gemini-2.5-flash free-form    (thinking fallback, slower but powerful)
+        #   2. gemini-2.0-flash free-form    (handles edge cases)
+        #   3. gemini-2.5-flash free-form    (thinking fallback)
         _FAST = 'models/gemini-2.0-flash'
         _SLOW = 'models/gemini-2.5-flash'
         attempts = [
@@ -3128,34 +3154,36 @@ def suggest_options():
 
         if not raw or '{' not in raw:
             err_msg = str(last_exc) if last_exc else 'AI model returned no usable JSON'
-            return jsonify({'error': f'Could not generate options after 3 attempts. {err_msg}'}), 500
+            return jsonify({'error': f'Could not generate answer after 3 attempts. {err_msg}'}), 500
 
         # ── Parse with robust 5-stage extractor ───────────────────────────
         result = extract_json(raw)
 
-        # Normalise: ensure options list has exactly 4 entries
-        opts   = result.get('options', [])
-        labels = ['A', 'B', 'C', 'D']
-        while len(opts) < 4:
-            opts.append(f"{labels[len(opts)]}) —")
-
-        # Convert any residual LaTeX to Unicode
-        cleaned_opts = []
-        for i, opt in enumerate(opts[:4]):
-            opt_text = _normalize_symbols(str(opt))
-            if not opt_text.upper().startswith(labels[i] + ')'):
-                inner    = opt_text.lstrip('ABCDabcd) ').strip()
-                opt_text = f'{labels[i]}) {inner}'
-            cleaned_opts.append(opt_text)
-        result['options'] = cleaned_opts
-
-        # Ensure correct is a single uppercase letter A-D
-        correct = str(result.get('correct', 'A')).strip().upper()
-        result['correct'] = correct[0] if correct and correct[0] in 'ABCD' else 'A'
-
-        # Normalise explanation text
+        # Normalise explanation in both paths
         if result.get('explanation'):
-            result['explanation'] = _normalize_symbols(result['explanation'])
+            result['explanation'] = _normalize_symbols(str(result['explanation']))
+
+        if is_mcq:
+            # Ensure options list has exactly 4 entries
+            opts   = result.get('options', [])
+            labels = ['A', 'B', 'C', 'D']
+            while len(opts) < 4:
+                opts.append(f"{labels[len(opts)]}) —")
+
+            cleaned_opts = []
+            for i, opt in enumerate(opts[:4]):
+                opt_text = _normalize_symbols(str(opt))
+                if not opt_text.upper().startswith(labels[i] + ')'):
+                    inner    = opt_text.lstrip('ABCDabcd) ').strip()
+                    opt_text = f'{labels[i]}) {inner}'
+                cleaned_opts.append(opt_text)
+            result['options'] = cleaned_opts
+
+            correct = str(result.get('correct', 'A')).strip().upper()
+            result['correct'] = correct[0] if correct and correct[0] in 'ABCD' else 'A'
+        else:
+            # Non-MCQ: normalise answer text
+            result['answer'] = _normalize_symbols(str(result.get('answer', '')))
 
         return jsonify(result)
     except Exception as exc:

@@ -2093,15 +2093,23 @@ function editQuestion(secIdx, qIdx) {
       </div>`;
   }
 
-  // ── Answer-key textarea (non-MCQ only) ──────────────────────────────────
-  const answerBlock = (!isMCQ && akEntry) ? `
+  // ── Answer-key textarea (non-MCQ) with Auto-suggest button ─────────────
+  const answerBlock = !isMCQ ? `
     <div class="q-answer-edit-row">
-      <label class="q-answer-edit-label">&#9989; Answer Key Entry
-        <span class="q-img-optional">(update if question changed)</span>
-      </label>
+      <div class="q-options-edit-header" style="margin-bottom:6px">
+        <label class="q-answer-edit-label" style="margin:0">&#9989; Answer Key Entry
+          <span class="q-img-optional">(update if question changed)</span>
+        </label>
+        <button class="btn btn-sm q-suggest-btn"
+                id="qsuggest-${secIdx}-${qIdx}"
+                onclick="suggestAnswer(${secIdx},${qIdx})">
+          &#129302; Auto-suggest
+        </button>
+      </div>
       <textarea class="q-answer-edit-textarea" id="qanswer-${secIdx}-${qIdx}"
-                rows="2" placeholder="Enter correct answer…"
+                rows="3" placeholder="Enter correct answer…"
       >${curAnswer.replace(/</g, '&lt;')}</textarea>
+      <div class="q-suggest-hint" id="qsuggest-hint-${secIdx}-${qIdx}" style="display:none"></div>
     </div>` : '';
 
   textEl.innerHTML = `
@@ -2220,10 +2228,18 @@ function saveQuestion(secIdx, qIdx) {
   } else {
     // Non-MCQ: free-text answer key update
     const answerTa = document.getElementById(`qanswer-${secIdx}-${qIdx}`);
-    if (answerTa && state.questionPaper.answer_key) {
-      const qId     = q.q_id || '';
-      const akEntry = state.questionPaper.answer_key.find(a => a.q_id === qId);
-      if (akEntry) akEntry.answer = answerTa.value.trim();
+    if (answerTa) {
+      const newAnswer = answerTa.value.trim();
+      if (newAnswer && state.questionPaper.answer_key) {
+        const qId = q.q_id || '';
+        let akEntry = state.questionPaper.answer_key.find(a => a.q_id === qId);
+        if (akEntry) {
+          akEntry.answer = newAnswer;
+        } else if (qId) {
+          // Create a new answer key entry if one didn't exist
+          state.questionPaper.answer_key.push({ q_id: qId, answer: newAnswer });
+        }
+      }
     }
   }
 
@@ -2231,7 +2247,26 @@ function saveQuestion(secIdx, qIdx) {
   showToast('Question updated!', 'success');
 }
 
-/** Call backend to auto-generate 4 MCQ options + correct answer for the typed question. */
+/** Shared helper: call /api/suggest-options with a 20 s timeout. */
+async function _callSuggestAPI(payload) {
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch('/api/suggest-options', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+      signal:  controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return await res.json();
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
+}
+
+/** Auto-generate 4 MCQ options + correct answer for MCQ / assertion-reason questions. */
 async function suggestMCQOptions(secIdx, qIdx) {
   const btn      = document.getElementById(`qsuggest-${secIdx}-${qIdx}`);
   const hintDiv  = document.getElementById(`qsuggest-hint-${secIdx}-${qIdx}`);
@@ -2244,30 +2279,21 @@ async function suggestMCQOptions(secIdx, qIdx) {
     return;
   }
 
+  const sectionType = (state.questionPaper.sections[secIdx] || {}).type || 'mcq';
+
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
   if (hintDiv) { hintDiv.style.display = 'none'; hintDiv.textContent = ''; }
 
-  // Abort after 20 s so the UI never hangs indefinitely
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 20000);
-
   try {
-    const res = await fetch('/api/suggest-options', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        question:  questionText,
-        subject:   state.subject,
-        class_num: state.classNum,
-      }),
-      signal: controller.signal,
+    const data = await _callSuggestAPI({
+      question:      questionText,
+      subject:       state.subject,
+      class_num:     state.classNum,
+      question_type: sectionType,
     });
-    clearTimeout(timeoutId);
-
-    const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    // Fill option inputs with AI suggestions
+    // Fill option inputs
     const labels = ['A', 'B', 'C', 'D'];
     labels.forEach((lbl, i) => {
       const input = document.getElementById(`qopt-${secIdx}-${qIdx}-${i}`);
@@ -2284,14 +2310,60 @@ async function suggestMCQOptions(secIdx, qIdx) {
       if (radio) radio.checked = true;
     }
 
-    // Show explanation hint
     if (hintDiv && data.explanation) {
       hintDiv.textContent = `💡 ${data.explanation}`;
       hintDiv.style.display = 'block';
     }
     showToast('Options suggested — review and save!', 'success');
   } catch (e) {
-    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      showToast('Auto-suggest timed out. Please try again.', 'error');
+    } else {
+      showToast(`Auto-suggest failed: ${e.message || 'Unknown error'}`, 'error');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#129302; Auto-suggest'; }
+  }
+}
+
+/** Auto-generate a suggested answer for non-MCQ question types. */
+async function suggestAnswer(secIdx, qIdx) {
+  const btn      = document.getElementById(`qsuggest-${secIdx}-${qIdx}`);
+  const hintDiv  = document.getElementById(`qsuggest-hint-${secIdx}-${qIdx}`);
+  const ta       = document.getElementById(`qedit-${secIdx}-${qIdx}`);
+  const answerTa = document.getElementById(`qanswer-${secIdx}-${qIdx}`);
+  if (!ta) return;
+
+  const questionText = ta.value.trim();
+  if (!questionText) {
+    showToast('Type the question first, then click Auto-suggest.', 'error');
+    return;
+  }
+
+  const sectionType = (state.questionPaper.sections[secIdx] || {}).type || 'short_answer';
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Thinking…'; }
+  if (hintDiv) { hintDiv.style.display = 'none'; hintDiv.textContent = ''; }
+
+  try {
+    const data = await _callSuggestAPI({
+      question:      questionText,
+      subject:       state.subject,
+      class_num:     state.classNum,
+      question_type: sectionType,
+    });
+    if (data.error) throw new Error(data.error);
+
+    if (answerTa && data.answer) {
+      answerTa.value = data.answer;
+    }
+
+    if (hintDiv && data.explanation) {
+      hintDiv.textContent = `💡 ${data.explanation}`;
+      hintDiv.style.display = 'block';
+    }
+    showToast('Answer suggested — review and save!', 'success');
+  } catch (e) {
     if (e.name === 'AbortError') {
       showToast('Auto-suggest timed out. Please try again.', 'error');
     } else {
