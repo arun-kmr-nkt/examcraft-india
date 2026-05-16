@@ -12,6 +12,7 @@ const state = {
   schoolName: '',
   schoolLogoDataUrl: '',
   examDate: '',
+  syllabusVersion: 'new',
   selectedChapters: [],
   chapterImages: [],
   questionTypes: {},
@@ -641,6 +642,15 @@ function goToStep2() {
   // Persist teacher name, school name, and logo to server (best-effort, non-blocking)
   saveUserProfile(state.teacherName, state.schoolName, state.schoolLogoDataUrl);
 
+  // Reset syllabus version whenever subject/class changes
+  state.syllabusVersion = 'new';
+  const toggleWrap = document.getElementById('syllabus-toggle-wrap');
+  if (toggleWrap) {
+    toggleWrap.querySelectorAll('.syllabus-toggle-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.version === 'new');
+    });
+  }
+
   loadChapters();
   gotoStep(2);
 }
@@ -656,6 +666,16 @@ function goToStep3() {
   gotoStep(3);
 }
 
+/* ===== SYLLABUS VERSION TOGGLE ===== */
+function switchSyllabusVersion(version) {
+  state.syllabusVersion = version;
+  state.selectedChapters = [];
+  document.querySelectorAll('.syllabus-toggle-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.version === version);
+  });
+  loadChapters();
+}
+
 /* ===== CHAPTERS ===== */
 async function loadChapters() {
   const container = document.getElementById('chapters-container');
@@ -666,9 +686,29 @@ async function loadChapters() {
     const res = await fetch('/api/chapters', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ class_num: state.classNum, subject: state.subject, board })
+      body: JSON.stringify({
+        class_num: state.classNum,
+        subject: state.subject,
+        board,
+        syllabus_version: state.syllabusVersion || 'new'
+      })
     });
     const data = await res.json();
+
+    // Show/hide syllabus version toggle based on whether legacy exists
+    const toggleWrap = document.getElementById('syllabus-toggle-wrap');
+    if (toggleWrap) {
+      if (data.has_legacy) {
+        toggleWrap.style.display = 'flex';
+        // Update active state
+        toggleWrap.querySelectorAll('.syllabus-toggle-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.version === (state.syllabusVersion || 'new'));
+        });
+      } else {
+        toggleWrap.style.display = 'none';
+        state.syllabusVersion = 'new';
+      }
+    }
 
     container.innerHTML = '';
     if (!data.chapters || data.chapters.length === 0) {
@@ -1072,13 +1112,110 @@ function collectQuestionTypes() {
   return result;
 }
 
-/* ===== FORMAT FORMULA (superscript / subscript) ===== */
+/* ===== GREEK & MATH SYMBOL NORMALISATION ===== */
+// Maps LaTeX backslash commands → Unicode character
+const _LATEX_SYMBOLS = {
+  // Greek lowercase
+  '\\alpha':'α','\\beta':'β','\\gamma':'γ','\\delta':'δ',
+  '\\epsilon':'ε','\\varepsilon':'ε','\\zeta':'ζ','\\eta':'η',
+  '\\theta':'θ','\\vartheta':'ϑ','\\iota':'ι','\\kappa':'κ',
+  '\\lambda':'λ','\\mu':'μ','\\nu':'ν','\\xi':'ξ',
+  '\\pi':'π','\\varpi':'ϖ','\\rho':'ρ','\\varrho':'ϱ',
+  '\\sigma':'σ','\\varsigma':'ς','\\tau':'τ','\\upsilon':'υ',
+  '\\phi':'φ','\\varphi':'φ','\\chi':'χ','\\psi':'ψ','\\omega':'ω',
+  // Greek uppercase
+  '\\Alpha':'Α','\\Beta':'Β','\\Gamma':'Γ','\\Delta':'Δ',
+  '\\Epsilon':'Ε','\\Zeta':'Ζ','\\Eta':'Η','\\Theta':'Θ',
+  '\\Iota':'Ι','\\Kappa':'Κ','\\Lambda':'Λ','\\Mu':'Μ',
+  '\\Nu':'Ν','\\Xi':'Ξ','\\Pi':'Π','\\Rho':'Ρ',
+  '\\Sigma':'Σ','\\Tau':'Τ','\\Upsilon':'Υ','\\Phi':'Φ',
+  '\\Chi':'Χ','\\Psi':'Ψ','\\Omega':'Ω',
+  // Maths operators / relations
+  '\\times':'×','\\div':'÷','\\pm':'±','\\mp':'∓','\\cdot':'·',
+  '\\leq':'≤','\\le':'≤','\\geq':'≥','\\ge':'≥',
+  '\\neq':'≠','\\ne':'≠','\\approx':'≈','\\equiv':'≡',
+  '\\propto':'∝','\\sim':'∼','\\simeq':'≃',
+  '\\infty':'∞','\\partial':'∂','\\nabla':'∇',
+  '\\sum':'∑','\\prod':'∏','\\int':'∫',
+  '\\in':'∈','\\notin':'∉',
+  '\\subset':'⊂','\\supset':'⊃','\\subseteq':'⊆','\\supseteq':'⊇',
+  '\\cup':'∪','\\cap':'∩','\\emptyset':'∅',
+  '\\rightarrow':'→','\\to':'→','\\leftarrow':'←',
+  '\\leftrightarrow':'↔','\\Rightarrow':'⇒','\\Leftarrow':'⇐',
+  '\\Leftrightarrow':'⟺','\\uparrow':'↑','\\downarrow':'↓',
+  '\\angle':'∠','\\perp':'⊥','\\parallel':'∥',
+  '\\triangle':'△','\\square':'□','\\therefore':'∴','\\because':'∵',
+  '\\circ':'°','\\degree':'°',
+  '\\ldots':'…','\\cdots':'⋯','\\vdots':'⋮','\\ddots':'⋱',
+  '\\forall':'∀','\\exists':'∃','\\nexists':'∄',
+  '\\oplus':'⊕','\\otimes':'⊗','\\odot':'⊙',
+  '\\langle':'⟨','\\rangle':'⟩',
+};
+// Sort keys longest-first so longer commands win over short prefixes
+const _LATEX_KEYS = Object.keys(_LATEX_SYMBOLS).sort((a, b) => b.length - a.length);
+
+// Maps HTML entity names → Unicode character
+const _HTML_ENTITIES = {
+  '&alpha;':'α','&beta;':'β','&gamma;':'γ','&delta;':'δ','&epsilon;':'ε',
+  '&zeta;':'ζ','&eta;':'η','&theta;':'θ','&iota;':'ι','&kappa;':'κ',
+  '&lambda;':'λ','&mu;':'μ','&nu;':'ν','&xi;':'ξ','&pi;':'π',
+  '&rho;':'ρ','&sigma;':'σ','&tau;':'τ','&upsilon;':'υ','&phi;':'φ',
+  '&chi;':'χ','&psi;':'ψ','&omega;':'ω',
+  '&Alpha;':'Α','&Beta;':'Β','&Gamma;':'Γ','&Delta;':'Δ','&Epsilon;':'Ε',
+  '&Zeta;':'Ζ','&Eta;':'Η','&Theta;':'Θ','&Iota;':'Ι','&Kappa;':'Κ',
+  '&Lambda;':'Λ','&Mu;':'Μ','&Nu;':'Ν','&Xi;':'Ξ','&Pi;':'Π',
+  '&Rho;':'Ρ','&Sigma;':'Σ','&Tau;':'Τ','&Upsilon;':'Υ','&Phi;':'Φ',
+  '&Chi;':'Χ','&Psi;':'Ψ','&Omega;':'Ω',
+  '&times;':'×','&divide;':'÷','&plusmn;':'±','&middot;':'·',
+  '&le;':'≤','&ge;':'≥','&ne;':'≠','&asymp;':'≈','&equiv;':'≡',
+  '&infin;':'∞','&part;':'∂','&sum;':'∑','&prod;':'∏','&int;':'∫',
+  '&rArr;':'⇒','&lArr;':'⇐','&hArr;':'⟺',
+  '&rarr;':'→','&larr;':'←','&harr;':'↔',
+  '&ang;':'∠','&perp;':'⊥','&there4;':'∴',
+  '&deg;':'°','&hellip;':'…','&sdot;':'·',
+};
+
+/**
+ * Normalise a raw text string by converting:
+ *   • HTML entity names (&alpha; &theta; &times; …) → Unicode
+ *   • LaTeX commands (\alpha \beta \times \sqrt{x} \frac{a}{b} …) → Unicode/plain
+ * Unicode Greek characters already in the string are left untouched.
+ */
+function _normalizeSymbols(text) {
+  let s = String(text);
+
+  // 1. HTML entity names → Unicode (before any escaping touches the & chars)
+  for (const [ent, uni] of Object.entries(_HTML_ENTITIES)) {
+    // plain string replace (split-join is fastest for repeated fixed strings)
+    s = s.split(ent).join(uni);
+  }
+
+  // 2. Special LaTeX constructs with braced arguments
+  s = s.replace(/\\sqrt\{([^}]+)\}/g, '√($1)');                  // \sqrt{x} → √(x)
+  s = s.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)');   // \frac{a}{b} → (a)/(b)
+  s = s.replace(/\\(?:overline|hat|vec|bar|tilde|dot|ddot)\{([^}]+)\}/g, '$1'); // strip deco
+  s = s.replace(/\\text\{([^}]+)\}/g, '$1');                      // \text{...} → plain
+  s = s.replace(/\\mathrm\{([^}]+)\}/g, '$1');                    // \mathrm{...} → plain
+
+  // 3. LaTeX symbol commands (longest-first to avoid partial matches)
+  for (const cmd of _LATEX_KEYS) {
+    // Escape the backslash; require command not followed by another letter
+    const pat = new RegExp(cmd.replace(/\\/g, '\\\\') + '(?![a-zA-Z])', 'g');
+    s = s.replace(pat, _LATEX_SYMBOLS[cmd]);
+  }
+
+  return s;
+}
+
+/* ===== FORMAT FORMULA (Greek symbols / superscript / subscript) ===== */
 function formatFormula(rawText) {
-  // 1. HTML-escape
-  const e = String(rawText)
+  // 1. Normalise Greek/math symbols (LaTeX & HTML entities → Unicode)
+  const normalized = _normalizeSymbols(rawText);
+  // 2. HTML-escape (Unicode Greek chars are multi-byte and are NOT touched by this)
+  const e = normalized
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  // 2. Apply sup/sub
+  // 3. Apply superscript / subscript notation
   return e
     .replace(/\^\{([^}]{1,30})\}/g, '<sup>$1</sup>')
     .replace(/_\{([^}]{1,30})\}/g,  '<sub>$1</sub>')
@@ -1270,6 +1407,14 @@ function renderQuestionPaper(paper) {
         }
         if (q.sub_questions && q.sub_questions.length > 0) {
           qBody += `<div class="qp-subq-label">Answer the following questions:</div>`;
+        }
+      } else if (type === 'geometry_diagram') {
+        qBody += formatFormula(q.text || '');
+        if (q.figure_description) {
+          qBody += `<div class="qp-figure-box">
+            <div class="qp-figure-label">&#9998; Construction Space</div>
+            <div class="qp-figure-desc">${escapeHtml(q.figure_description)}</div>
+          </div>`;
         }
       } else {
         qBody += formatFormula(q.text || '');

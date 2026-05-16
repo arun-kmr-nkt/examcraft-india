@@ -1577,6 +1577,75 @@ body {
   font-weight: 500;
 }
 
+/* ===== GEOMETRIC DIAGRAM PLACEHOLDER ===== */
+.qp-figure-box {
+  margin-top: 0.9rem;
+  border: 2px dashed var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.25rem;
+  background: #f8f9ff;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.qp-figure-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.qp-figure-desc {
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ===== SYLLABUS VERSION TOGGLE ===== */
+.syllabus-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  background: #f0f3ff;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.syllabus-toggle-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-right: 0.25rem;
+}
+
+.syllabus-toggle-btn {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border: 1.5px solid var(--primary);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+
+.syllabus-toggle-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.syllabus-toggle-btn:hover:not(.active) {
+  background: #e8ecff;
+}
+
 /* ===== HISTORY PANEL ===== */
 .history-overlay {
   position: fixed;

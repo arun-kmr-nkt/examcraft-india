@@ -87,6 +87,109 @@ else:
 
 CONTACT_EMAIL = 'arun.kmr06@gmail.com'
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SYMBOL NORMALISATION — converts LaTeX backslash commands and HTML entity names
+# for Greek letters / maths operators to their Unicode equivalents so they render
+# correctly in both the on-screen paper and the Word-doc download.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_LATEX_TO_UNICODE = {
+    # ── Greek lowercase ───────────────────────────────────────────────────────
+    r'\alpha': 'α', r'\beta': 'β', r'\gamma': 'γ', r'\delta': 'δ',
+    r'\epsilon': 'ε', r'\varepsilon': 'ε', r'\zeta': 'ζ', r'\eta': 'η',
+    r'\theta': 'θ', r'\vartheta': 'ϑ', r'\iota': 'ι', r'\kappa': 'κ',
+    r'\lambda': 'λ', r'\mu': 'μ', r'\nu': 'ν', r'\xi': 'ξ',
+    r'\pi': 'π', r'\varpi': 'ϖ', r'\rho': 'ρ', r'\varrho': 'ϱ',
+    r'\sigma': 'σ', r'\varsigma': 'ς', r'\tau': 'τ', r'\upsilon': 'υ',
+    r'\phi': 'φ', r'\varphi': 'φ', r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
+    # ── Greek uppercase ───────────────────────────────────────────────────────
+    r'\Alpha': 'Α', r'\Beta': 'Β', r'\Gamma': 'Γ', r'\Delta': 'Δ',
+    r'\Epsilon': 'Ε', r'\Zeta': 'Ζ', r'\Eta': 'Η', r'\Theta': 'Θ',
+    r'\Iota': 'Ι', r'\Kappa': 'Κ', r'\Lambda': 'Λ', r'\Mu': 'Μ',
+    r'\Nu': 'Ν', r'\Xi': 'Ξ', r'\Pi': 'Π', r'\Rho': 'Ρ',
+    r'\Sigma': 'Σ', r'\Tau': 'Τ', r'\Upsilon': 'Υ', r'\Phi': 'Φ',
+    r'\Chi': 'Χ', r'\Psi': 'Ψ', r'\Omega': 'Ω',
+    # ── Maths operators / relations ───────────────────────────────────────────
+    r'\times': '×', r'\div': '÷', r'\pm': '±', r'\mp': '∓', r'\cdot': '·',
+    r'\leq': '≤', r'\le': '≤', r'\geq': '≥', r'\ge': '≥',
+    r'\neq': '≠', r'\ne': '≠', r'\approx': '≈', r'\equiv': '≡',
+    r'\propto': '∝', r'\sim': '∼', r'\simeq': '≃',
+    r'\infty': '∞', r'\partial': '∂', r'\nabla': '∇',
+    r'\sum': '∑', r'\prod': '∏', r'\int': '∫',
+    r'\in': '∈', r'\notin': '∉',
+    r'\subset': '⊂', r'\supset': '⊃', r'\subseteq': '⊆', r'\supseteq': '⊇',
+    r'\cup': '∪', r'\cap': '∩', r'\emptyset': '∅',
+    r'\rightarrow': '→', r'\to': '→', r'\leftarrow': '←',
+    r'\leftrightarrow': '↔', r'\Rightarrow': '⇒', r'\Leftarrow': '⇐',
+    r'\Leftrightarrow': '⟺', r'\uparrow': '↑', r'\downarrow': '↓',
+    r'\angle': '∠', r'\perp': '⊥', r'\parallel': '∥',
+    r'\triangle': '△', r'\square': '□', r'\therefore': '∴', r'\because': '∵',
+    r'\circ': '°', r'\degree': '°',
+    r'\ldots': '…', r'\cdots': '⋯', r'\vdots': '⋮', r'\ddots': '⋱',
+    r'\forall': '∀', r'\exists': '∃', r'\nexists': '∄',
+    r'\oplus': '⊕', r'\otimes': '⊗', r'\odot': '⊙',
+    r'\langle': '⟨', r'\rangle': '⟩',
+}
+
+# Sort keys longest-first so longer commands match before shorter prefixes
+_LATEX_KEYS_SORTED = sorted(_LATEX_TO_UNICODE.keys(), key=len, reverse=True)
+
+_HTML_ENTITY_TO_UNICODE = {
+    '&alpha;': 'α', '&beta;': 'β', '&gamma;': 'γ', '&delta;': 'δ',
+    '&epsilon;': 'ε', '&zeta;': 'ζ', '&eta;': 'η', '&theta;': 'θ',
+    '&iota;': 'ι', '&kappa;': 'κ', '&lambda;': 'λ', '&mu;': 'μ',
+    '&nu;': 'ν', '&xi;': 'ξ', '&pi;': 'π', '&rho;': 'ρ',
+    '&sigma;': 'σ', '&tau;': 'τ', '&upsilon;': 'υ', '&phi;': 'φ',
+    '&chi;': 'χ', '&psi;': 'ψ', '&omega;': 'ω',
+    '&Alpha;': 'Α', '&Beta;': 'Β', '&Gamma;': 'Γ', '&Delta;': 'Δ',
+    '&Epsilon;': 'Ε', '&Zeta;': 'Ζ', '&Eta;': 'Η', '&Theta;': 'Θ',
+    '&Iota;': 'Ι', '&Kappa;': 'Κ', '&Lambda;': 'Λ', '&Mu;': 'Μ',
+    '&Nu;': 'Ν', '&Xi;': 'Ξ', '&Pi;': 'Π', '&Rho;': 'Ρ',
+    '&Sigma;': 'Σ', '&Tau;': 'Τ', '&Upsilon;': 'Υ', '&Phi;': 'Φ',
+    '&Chi;': 'Χ', '&Psi;': 'Ψ', '&Omega;': 'Ω',
+    '&times;': '×', '&divide;': '÷', '&plusmn;': '±', '&middot;': '·',
+    '&le;': '≤', '&ge;': '≥', '&ne;': '≠', '&asymp;': '≈',
+    '&equiv;': '≡', '&infin;': '∞', '&part;': '∂',
+    '&sum;': '∑', '&prod;': '∏', '&int;': '∫',
+    '&rArr;': '⇒', '&lArr;': '⇐', '&hArr;': '⟺',
+    '&rarr;': '→', '&larr;': '←', '&harr;': '↔',
+    '&ang;': '∠', '&perp;': '⊥', '&there4;': '∴',
+    '&deg;': '°', '&hellip;': '…', '&sdot;': '·',
+}
+
+
+def _normalize_symbols(text: str) -> str:
+    """Convert LaTeX-style symbol commands and HTML entity names to Unicode.
+
+    Examples
+    --------
+    _normalize_symbols(r'\\alpha + \\beta') → 'α + β'
+    _normalize_symbols('&theta; = 30°')    → 'θ = 30°'
+    _normalize_symbols(r'\\sqrt{x}')       → '√(x)'
+    _normalize_symbols(r'\\frac{a}{b}')    → '(a)/(b)'
+    """
+    import re as _re
+    s = str(text)
+
+    # 1. HTML entities first (before escaping could touch the ampersands)
+    for entity, uni in _HTML_ENTITY_TO_UNICODE.items():
+        s = s.replace(entity, uni)
+
+    # 2. Special LaTeX constructs with braced arguments
+    s = _re.sub(r'\\sqrt\{([^}]+)\}', r'√(\1)', s)        # \sqrt{x} → √(x)
+    s = _re.sub(r'\\frac\{([^}]+)\}\{([^}]+)\}', r'(\1)/(\2)', s)  # \frac{a}{b}
+    s = _re.sub(r'\\(?:overline|hat|vec|bar|tilde|dot|ddot)\{([^}]+)\}',
+                r'\1', s)                                    # decorations → plain
+
+    # 3. LaTeX symbol commands (longest-match first, must not be followed by a letter)
+    for cmd in _LATEX_KEYS_SORTED:
+        uni = _LATEX_TO_UNICODE[cmd]
+        # Escape the backslash for the regex; ensure not followed by another letter
+        pattern = re.escape(cmd) + r'(?![a-zA-Z])'
+        s = _re.sub(pattern, uni, s)
+
+    return s
+
 
 def _email_body(name, email, mobile, school_name, message, request_type):
     return (
@@ -569,6 +672,7 @@ def _enforce_paper_specs(paper, question_types):
             'literature_short': f"Answer the following questions briefly. Each carries {mw}.",
             'literature_long':  f"Answer the following questions in detail. Each carries {mw}.",
             'diagram':          f"Draw neat, labelled diagrams as required. Each carries {mw}.",
+            'geometry_diagram': f"Construct the geometric figure(s) as described. Show all steps and label clearly. Each carries {mw}.",
             'numerical':        f"Solve the following numerical problems. Each carries {mw}.",
             'source_based':     f"Study the source carefully and answer the questions. Each carries {mw}.",
             'map_work':         f"On the outline map provided, locate and label as directed. Each carries {mw}.",
@@ -825,21 +929,23 @@ NCERT_CHAPTERS = {
                "Temperature and its Measurement", "A Journey through States of Water",
                "Methods of Separation in Everyday Life",
                "Living Organisms and their Surroundings", "Nature's Treasure"],
-        "7": ["Nutrition in Plants", "Nutrition in Animals", "Fibre to Fabric", "Heat",
-               "Acids, Bases and Salts", "Physical and Chemical Changes",
-               "Weather, Climate and Adaptations of Animals to Climate",
-               "Winds, Storms and Cyclones", "Soil", "Respiration in Organisms",
-               "Transportation in Animals and Plants", "Reproduction in Plants",
-               "Motion and Time", "Electric Current and its Effects", "Light",
-               "Water: A Precious Resource", "Forests: Our Lifeline", "Wastewater Story"],
-        "8": ["Crop Production and Management", "Microorganisms: Friend and Foe",
-               "Synthetic Fibres and Plastics", "Materials: Metals and Non-Metals",
-               "Coal and Petroleum", "Combustion and Flame",
-               "Conservation of Plants and Animals", "Cell Structure and Functions",
-               "Reproduction in Animals", "Reaching the Age of Adolescence",
-               "Force and Pressure", "Friction", "Sound",
-               "Chemical Effects of Electric Current", "Some Natural Phenomena", "Light",
-               "Stars and the Solar System", "Pollution of Air and Water"],
+        # Class 7 Science uses new NCERT 'Curiosity – Part 1' textbook (2025-26 onwards)
+        "7": ["The Ever-Evolving World of Science", "Exploring Substances: Acidic, Basic and Neutral",
+               "Electricity: Circuits and their Components", "The World of Metals and Non-metals",
+               "Changes Around Us: Physical and Chemical", "Adolescence: A Stage of Growth and Change",
+               "Heat Transfer in Nature", "Measurement of Time and Motion",
+               "Life Processes in Animals", "Life Processes in Plants",
+               "Light: Shadows and Reflections", "Earth, Moon, and the Sun"],
+        # Class 8 Science uses new NCERT 'Curiosity – Part 1' textbook (2025-26 onwards)
+        "8": ["Exploring the Investigative World of Science",
+               "The Invisible Living World: Beyond Our Naked Eye", "Health: The Ultimate Treasure",
+               "Electricity: Magnetic and Heating Effects", "Exploring Forces",
+               "Pressure, Winds, Storms, and Cyclones", "Particulate Nature of Matter",
+               "Nature of Matter: Elements, Compounds, and Mixtures",
+               "The Amazing World of Solutes, Solvents, and Solutions",
+               "Light: Mirrors and Lenses", "Keeping Time with the Skies",
+               "How Nature Works in Harmony",
+               "Our Home: Earth, a Unique Life Sustaining Planet"],
         "9": ["Matter in Our Surroundings", "Is Matter Around Us Pure?",
                "Atoms and Molecules", "Structure of the Atom",
                "The Fundamental Unit of Life", "Tissues",
@@ -917,40 +1023,22 @@ NCERT_CHAPTERS = {
                "Empires and Republics (600 BCE – 200 CE)", "Unity in Diversity",
                "The Spread of Indian Culture", "Our Cultural Heritage",
                "Local Government"],
-        "7": {
-            "History": ["Tracing Changes Through A Thousand Years", "New Kings and Kingdoms",
-                        "The Delhi Sultans", "The Mughal Empire", "Rulers and Buildings",
-                        "Towns, Traders and Craftspersons", "Tribes, Nomads and Settled Communities",
-                        "Devotional Paths to the Divine", "The Making of Regional Cultures",
-                        "Eighteenth-Century Political Formations"],
-            "Geography": ["Environment", "Inside Our Earth", "Our Changing Earth", "Air", "Water",
-                          "Natural Vegetation and Wildlife",
-                          "Human Environment – Settlement, Transport and Communication",
-                          "Human-Environment Interactions – The Tropical and the Subtropical Region",
-                          "Life in the Temperate Grasslands", "Life in the Deserts"],
-            "Civics": ["On Equality", "Role of the Government in Health",
-                       "How the State Government Works", "Growing up as Boys and Girls",
-                       "Women Change the World", "Understanding Media", "Markets Around Us",
-                       "A Shirt in the Market", "Struggles for Equality"],
-        },
-        "8": {
-            "History": ["How, When and Where", "From Trade to Territory",
-                        "Ruling the Countryside",
-                        "Tribals, Dikus and the Vision of a Golden Age",
-                        "When People Rebel", "Colonialism and the City",
-                        "Weavers, Iron Smelters and Factory Owners",
-                        "Civilising the 'Native', Educating the Nation",
-                        "Women, Caste and Reform", "The Changing World of Visual Arts",
-                        "The Making of the National Movement", "India After Independence"],
-            "Geography": ["Resources", "Land, Soil, Water, Natural Vegetation and Wildlife Resources",
-                          "Mineral and Power Resources", "Agriculture", "Industries",
-                          "Human Resources"],
-            "Civics": ["The Indian Constitution", "Understanding Secularism",
-                       "Why Do We Need a Parliament?", "Understanding Laws", "Judiciary",
-                       "Understanding Our Criminal Justice System",
-                       "Understanding Marginalisation", "Confronting Marginalisation",
-                       "Public Facilities", "Law and Social Justice"],
-        },
+        # Class 7 Social Science uses new integrated NCERT 'Exploring Society – Part 1 & 2' (2025-26 onwards)
+        "7": ["Geographical Diversity of India", "Understanding the Weather", "Climates of India",
+               "New Beginnings: Cities and States", "The Rise of Empires", "The Age of Reorganisation",
+               "The Gupta Era: An Age of Tireless Creativity", "How the Land Becomes Sacred",
+               "From the Rulers to the Ruled: Types of Governments",
+               "The Constitution of India — An Introduction", "From Barter to Money",
+               "Understanding Markets", "The Story of Indian Farming", "India and Her Neighbours",
+               "Empires and Kingdoms: 6th to 10th Centuries", "Turning Tides: 11th and 12th Centuries",
+               "India, a Home to Many", "The State, the Government, and You",
+               "Infrastructure: Engine of India's Development", "Banks and the Magic of Finance"],
+        # Class 8 Social Science uses new NCERT 'Exploring Society – Part 1' only (Part 2 recalled by Supreme Court)
+        "8": ["Natural Resources and Their Use", "Reshaping India's Political Map",
+               "The Rise of the Marathas", "The Colonial Era in India",
+               "Universal Franchise and India's Electoral System",
+               "The Parliamentary System: Legislature and Executive",
+               "Factors of Production"],
         "9": {
             "History": ["The French Revolution",
                         "Socialism in Europe and the Russian Revolution",
@@ -1959,17 +2047,131 @@ SUBJECTS_BY_CLASS = {
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# LEGACY SYLLABUS — old NCERT chapters (pre-2025-26) for subjects that have
+# been updated. These are offered as an alternative when has_legacy is true.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+NCERT_CHAPTERS_LEGACY = {
+    "Mathematics": {
+        # Old Ganita Prakash was not used for class 6; new syllabus since 2024-25
+        "6": ["Knowing Our Numbers", "Whole Numbers", "Playing with Numbers",
+               "Basic Geometrical Ideas", "Understanding Elementary Shapes", "Integers",
+               "Fractions", "Decimals", "Data Handling", "Mensuration",
+               "Algebra", "Ratio and Proportion", "Symmetry", "Practical Geometry"],
+        # Old class 7 Math (before Ganita Prakash)
+        "7": ["Integers", "Fractions and Decimals", "Data Handling",
+               "Simple Equations", "Lines and Angles", "The Triangle and its Properties",
+               "Comparing Quantities", "Rational Numbers", "Perimeter and Area",
+               "Algebraic Expressions", "Exponents and Powers", "Symmetry",
+               "Visualising Solid Shapes"],
+        # Old class 8 Math (before Ganita Prakash)
+        "8": ["Rational Numbers", "Linear Equations in One Variable",
+               "Understanding Quadrilaterals", "Data Handling",
+               "Squares and Square Roots", "Cubes and Cube Roots",
+               "Comparing Quantities", "Algebraic Expressions and Identities",
+               "Mensuration", "Exponents and Powers", "Direct and Inverse Proportions",
+               "Factorisation", "Introduction to Graphs"],
+    },
+    "Science": {
+        # Old class 6 Science (before Curiosity)
+        "6": ["Food: Where Does It Come From?", "Components of Food",
+               "Fibre to Fabric", "Sorting Materials into Groups",
+               "Separation of Substances", "Changes Around Us",
+               "Getting to Know Plants", "Body Movements",
+               "The Living Organisms — Characteristics and Habitats",
+               "Motion and Measurement of Distances",
+               "Light, Shadows and Reflections", "Electricity and Circuits",
+               "Fun with Magnets", "Water", "Air Around Us",
+               "Garbage In, Garbage Out"],
+        # Old class 7 Science (before Curiosity)
+        "7": ["Nutrition in Plants", "Nutrition in Animals", "Fibre to Fabric", "Heat",
+               "Acids, Bases and Salts", "Physical and Chemical Changes",
+               "Weather, Climate and Adaptations of Animals to Climate",
+               "Winds, Storms and Cyclones", "Soil", "Respiration in Organisms",
+               "Transportation in Animals and Plants", "Reproduction in Plants",
+               "Motion and Time", "Electric Current and its Effects", "Light",
+               "Water: A Precious Resource", "Forests: Our Lifeline", "Wastewater Story"],
+        # Old class 8 Science (before Curiosity)
+        "8": ["Crop Production and Management", "Microorganisms: Friend and Foe",
+               "Synthetic Fibres and Plastics", "Materials: Metals and Non-Metals",
+               "Coal and Petroleum", "Combustion and Flame",
+               "Conservation of Plants and Animals", "Cell Structure and Functions",
+               "Reproduction in Animals", "Reaching the Age of Adolescence",
+               "Force and Pressure", "Friction", "Sound",
+               "Chemical Effects of Electric Current", "Some Natural Phenomena", "Light",
+               "Stars and the Solar System", "Pollution of Air and Water"],
+    },
+    "Social Science": {
+        # Old class 6 Social Science (before Exploring Society)
+        "6": {
+            "History": ["What, Where, How and When?", "On The Trail of the Earliest People",
+                        "From Gathering to Growing Food", "In the Earliest Cities",
+                        "What Books and Burials Tell Us", "Kingdoms, Kings and an Early Republic",
+                        "New Questions and Ideas", "Ashoka, The Emperor Who Gave Up War",
+                        "Vital Villages, Thriving Towns", "Traders, Kings and Pilgrims",
+                        "New Empires and Kingdoms", "Buildings, Paintings and Books"],
+            "Geography": ["The Earth in the Solar System", "Globe: Latitudes and Longitudes",
+                          "Motions of the Earth", "Maps", "Major Domains of the Earth",
+                          "Major Landforms of the Earth", "Our Country — India",
+                          "India: Climate, Vegetation and Wildlife"],
+            "Civics": ["Understanding Diversity", "Diversity and Discrimination",
+                       "What is Government?", "Key Elements of a Democratic Government",
+                       "Panchayati Raj", "Rural Administration", "Urban Administration",
+                       "Rural Livelihoods", "Urban Livelihoods"],
+        },
+        # Old class 7 Social Science (before Exploring Society)
+        "7": {
+            "History": ["Tracing Changes Through A Thousand Years", "New Kings and Kingdoms",
+                        "The Delhi Sultans", "The Mughal Empire", "Rulers and Buildings",
+                        "Towns, Traders and Craftspersons", "Tribes, Nomads and Settled Communities",
+                        "Devotional Paths to the Divine", "The Making of Regional Cultures",
+                        "Eighteenth-Century Political Formations"],
+            "Geography": ["Environment", "Inside Our Earth", "Our Changing Earth", "Air", "Water",
+                          "Natural Vegetation and Wildlife",
+                          "Human Environment – Settlement, Transport and Communication",
+                          "Human-Environment Interactions – The Tropical and the Subtropical Region",
+                          "Life in the Temperate Grasslands", "Life in the Deserts"],
+            "Civics": ["On Equality", "Role of the Government in Health",
+                       "How the State Government Works", "Growing up as Boys and Girls",
+                       "Women Change the World", "Understanding Media", "Markets Around Us",
+                       "A Shirt in the Market", "Struggles for Equality"],
+        },
+        # Old class 8 Social Science (before Exploring Society)
+        "8": {
+            "History": ["How, When and Where", "From Trade to Territory",
+                        "Ruling the Countryside",
+                        "Tribals, Dikus and the Vision of a Golden Age",
+                        "When People Rebel", "Colonialism and the City",
+                        "Weavers, Iron Smelters and Factory Owners",
+                        "Civilising the 'Native', Educating the Nation",
+                        "Women, Caste and Reform", "The Changing World of Visual Arts",
+                        "The Making of the National Movement", "India After Independence"],
+            "Geography": ["Resources", "Land, Soil, Water, Natural Vegetation and Wildlife Resources",
+                          "Mineral and Power Resources", "Agriculture", "Industries",
+                          "Human Resources"],
+            "Civics": ["The Indian Constitution", "Understanding Secularism",
+                       "Why Do We Need a Parliament?", "Understanding Laws", "Judiciary",
+                       "Understanding Our Criminal Justice System",
+                       "Understanding Marginalisation", "Confronting Marginalisation",
+                       "Public Facilities", "Law and Social Justice"],
+        },
+    },
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STATIC DATA — SUBJECT QUESTION TYPES
 # ═══════════════════════════════════════════════════════════════════════════════
 
 SUBJECT_QUESTION_TYPES = {
     "Mathematics": [
-        {"key": "mcq",          "label": "Multiple Choice",          "icon": "check-circle",  "default_count": 10, "default_marks": 1, "enabled": True},
-        {"key": "fill_blank",   "label": "Fill in the Blanks",       "icon": "edit-3",        "default_count": 5,  "default_marks": 1, "enabled": True},
-        {"key": "short_answer", "label": "Very Short Answer (VSA)",  "icon": "file-text",     "default_count": 5,  "default_marks": 2, "enabled": True},
-        {"key": "long_answer",  "label": "Proof / Derivation",       "icon": "book-open",     "default_count": 4,  "default_marks": 5, "enabled": True},
-        {"key": "case_study",   "label": "Case Study / Passage",     "icon": "layers",        "default_count": 2,  "default_marks": 4, "enabled": True},
-        {"key": "construction", "label": "Graph / Coordinate Work",  "icon": "pen-tool",      "default_count": 2,  "default_marks": 3, "enabled": False},
+        {"key": "mcq",              "label": "Multiple Choice",          "icon": "check-circle",  "default_count": 10, "default_marks": 1, "enabled": True},
+        {"key": "fill_blank",       "label": "Fill in the Blanks",       "icon": "edit-3",        "default_count": 5,  "default_marks": 1, "enabled": True},
+        {"key": "short_answer",     "label": "Very Short Answer (VSA)",  "icon": "file-text",     "default_count": 5,  "default_marks": 2, "enabled": True},
+        {"key": "long_answer",      "label": "Proof / Derivation",       "icon": "book-open",     "default_count": 4,  "default_marks": 5, "enabled": True},
+        {"key": "case_study",       "label": "Case Study / Passage",     "icon": "layers",        "default_count": 2,  "default_marks": 4, "enabled": True},
+        {"key": "geometry_diagram", "label": "Geometric Construction",   "icon": "triangle",      "default_count": 2,  "default_marks": 3, "enabled": False},
+        {"key": "construction",     "label": "Graph / Coordinate Work",  "icon": "pen-tool",      "default_count": 2,  "default_marks": 3, "enabled": False},
     ],
     "Science": [
         {"key": "mcq",          "label": "Multiple Choice",          "icon": "check-circle",  "default_count": 10, "default_marks": 1, "enabled": True},
@@ -2150,7 +2352,8 @@ QUESTION_TYPE_DESCRIPTIONS = {
     "diagram":            "Diagram question – students draw and/or label a specified diagram",
     "case_study":         "Case Study / Passage-based – a short paragraph followed by sub-questions",
     "source_based":       "Source-based / Case Study – an extract (textual or visual) followed by analytical questions",
-    "construction":       "Graph or Geometric Construction – students construct a graph, geometric figure, or coordinate plot with proper labelling",
+    "construction":       "Graph or Coordinate Construction – students construct a graph or coordinate plot with proper labelling and axes",
+    "geometry_diagram":   "Geometric Diagram / Construction – students draw and label a specified geometric figure (triangle, circle, quadrilateral, angle bisector, perpendicular bisector, etc.); the question must include a 'figure_description' field describing the diagram to be drawn",
     "assertion_reason":   "Assertion-Reason – a pair of statements (Assertion and Reason); students choose from options: both true and reason explains assertion, both true but reason doesn't explain, assertion true reason false, assertion false",
     "numerical":          "Numerical Problems – step-by-step calculation questions requiring formula application and unit work",
     "chemical_eq":        "Chemical Equations / Reactions – write, balance, or identify products of chemical reactions",
@@ -2321,9 +2524,23 @@ def get_boards():
     return jsonify({'boards': BOARDS})
 
 
-def _extract_chapters(subject, class_num):
+def _extract_chapters(subject, class_num, version='new'):
+    """Return chapter list for the given subject/class.
+    version='new'    → look up NCERT_CHAPTERS (default, latest NCERT syllabus)
+    version='legacy' → look up NCERT_CHAPTERS_LEGACY (old syllabus before 2025-26 revision)
+    """
+    source = NCERT_CHAPTERS_LEGACY if version == 'legacy' else NCERT_CHAPTERS
     chapters = []
-    if subject in NCERT_CHAPTERS:
+    if subject in source:
+        class_data = source[subject].get(class_num)
+        if isinstance(class_data, list):
+            chapters = class_data
+        elif isinstance(class_data, dict):
+            for sub_topic, ch_list in class_data.items():
+                for ch in ch_list:
+                    chapters.append(f"{sub_topic}: {ch}")
+    # Fallback to new chapters if legacy requested but not found
+    if not chapters and version == 'legacy' and subject in NCERT_CHAPTERS:
         class_data = NCERT_CHAPTERS[subject].get(class_num)
         if isinstance(class_data, list):
             chapters = class_data
@@ -2365,11 +2582,19 @@ def get_subjects():
 
 @app.route('/api/chapters', methods=['POST'])
 def get_chapters():
-    data      = request.get_json(force=True, silent=True) or {}
-    subject   = data.get('subject', '')
-    class_num = str(data.get('class_num', ''))
-    chapters  = _extract_chapters(subject, class_num)
-    return jsonify({'chapters': chapters})
+    data            = request.get_json(force=True, silent=True) or {}
+    subject         = data.get('subject', '')
+    class_num       = str(data.get('class_num', ''))
+    syllabus_version = data.get('syllabus_version', 'new')  # 'new' or 'legacy'
+
+    # Determine if a legacy alternative exists for this subject/class
+    has_legacy = (
+        subject in NCERT_CHAPTERS_LEGACY
+        and class_num in NCERT_CHAPTERS_LEGACY[subject]
+    )
+
+    chapters = _extract_chapters(subject, class_num, version=syllabus_version)
+    return jsonify({'chapters': chapters, 'has_legacy': has_legacy})
 
 
 @app.route('/api/custom-chapters', methods=['GET'])
@@ -2820,9 +3045,10 @@ INSTRUCTIONS FOR GENERATION:
 4. For Match the Following: create two columns with 4-6 items each
 5. For Fill in the Blanks: leave clear blanks (_____)
 6. For Diagram questions: specify what to draw/label with clear instructions
+6a. For geometry_diagram questions: add a "figure_description" field to each question describing the geometric figure the student must construct (e.g., "A triangle ABC with AB=6cm, angle B=60°, BC=4cm. Measure and write the length of AC."). This description will be shown as a dashed placeholder box in the printed paper where students draw their construction.
 7. Include proper general instructions at the top
 8. Add complete answer key at the end
-9. Use ^{{text}} for superscripts (e.g., x^{{2}}) and _{{text}} for subscripts (e.g., H_{{2}}O). Do NOT use LaTeX backslash commands (no \\frac, \\sqrt, \\times etc.). Write fractions as a/b, roots as sqrt(x), and use Unicode symbols (×, ÷, ≥, ≤, π, √) directly.
+9. Use ^{{text}} for superscripts (e.g., x^{{2}}) and _{{text}} for subscripts (e.g., H_{{2}}O). Do NOT use LaTeX backslash commands (no \\alpha, \\frac, \\sqrt, \\times etc.). Write fractions as a/b, roots as sqrt(x). Use these Unicode symbols DIRECTLY in the JSON text — copy-paste them exactly: Greek: α β γ δ ε ζ η θ ι κ λ μ ν ξ π ρ σ τ υ φ χ ψ ω  Γ Δ Θ Λ Ξ Π Σ Υ Φ Ψ Ω. Operators: × ÷ ± ≤ ≥ ≠ ≈ ≡ ∝ ∞ ∂ ∇ ∑ ∏ ∫ √ ∈ ∉ ∪ ∩ → ← ↔ ⇒ ∠ ⊥ ∥ °.
 10. CRITICAL — EXACT QUESTION COUNT: You MUST generate EXACTLY the number of questions specified for each section (see QUESTION PAPER STRUCTURE above). No more, no fewer. The total across all sections must be exactly {total_q_count} questions. Count each question carefully before finalising the JSON.
 11. For reading_passage and reading_poem sections: sub_questions MUST be a JSON array of objects — each object must have a "text" field (string) and a "marks" field (number). Do NOT use plain strings. The marks values across all sub_questions should sum to the section's marks-per-question. Example: "sub_questions": [{{"text": "What is the central theme of the passage?", "marks": 2}}, {{"text": "Why did the author use this metaphor? Explain.", "marks": 3}}]
 
@@ -3175,8 +3401,10 @@ def download_word():
             return p
 
         def add_formula_runs(paragraph, text, font_size=11, bold=False, color=None):
-            """Split text on ^{...} and _{...} patterns and add runs with sup/sub formatting."""
+            """Split text on ^{...} and _{...} patterns and add runs with sup/sub formatting.
+            Also normalises LaTeX Greek/maths commands and HTML entities to Unicode first."""
             import re as _re
+            text = _normalize_symbols(str(text))   # Greek letters, math symbols → Unicode
             parts = _re.split(r'(\^{[^}]{1,30}}|_{[^}]{1,30}}|\^\d+|\^[a-zA-Z]\b|_\d+)', text)
             for part in parts:
                 if not part:
@@ -3429,6 +3657,36 @@ def download_word():
                 elif q_type == 'true_false':
                     # Add True/False indicator
                     p.add_run("  [True / False]").font.size = Pt(10)
+
+                elif q_type == 'geometry_diagram' and q.get('figure_description'):
+                    # Dashed placeholder box for geometric construction
+                    fig_para = doc.add_paragraph()
+                    fig_para.paragraph_format.left_indent  = Inches(0.3)
+                    fig_para.paragraph_format.space_before = Pt(6)
+                    fig_para.paragraph_format.space_after  = Pt(4)
+                    fig_run = fig_para.add_run(f"[Construction Space] {q['figure_description']}")
+                    fig_run.font.size   = Pt(9)
+                    fig_run.italic      = True
+                    fig_run.font.color.rgb = RGBColor(99, 102, 241)
+                    # Draw a simple bordered paragraph to mimic a dashed box
+                    from docx.oxml.ns import qn as _qn
+                    from docx.oxml import OxmlElement as _OxmlElement
+                    box_para = doc.add_paragraph()
+                    box_para.paragraph_format.left_indent  = Inches(0.3)
+                    box_para.paragraph_format.space_before = Pt(2)
+                    box_para.paragraph_format.space_after  = Pt(8)
+                    box_run = box_para.add_run(" " * 80 + "\n" * 6)
+                    box_run.font.size = Pt(10)
+                    pPr = box_para._p.get_or_add_pPr()
+                    pBdr = _OxmlElement('w:pBdr')
+                    for side in ('top', 'left', 'bottom', 'right'):
+                        bdr = _OxmlElement(f'w:{side}')
+                        bdr.set(_qn('w:val'), 'dashed')
+                        bdr.set(_qn('w:sz'), '6')
+                        bdr.set(_qn('w:space'), '4')
+                        bdr.set(_qn('w:color'), '6366F1')
+                        pBdr.append(bdr)
+                    pPr.append(pBdr)
 
                 q_num += 1
 

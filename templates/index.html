@@ -336,6 +336,17 @@
           <p>Choose NCERT chapters to include in the question paper</p>
         </div>
         <div class="card-body">
+          <!-- Syllabus version toggle — visible only when a legacy version exists -->
+          <div id="syllabus-toggle-wrap" class="syllabus-toggle-wrap" style="display:none;">
+            <span class="syllabus-toggle-label">&#128218; Syllabus:</span>
+            <button class="syllabus-toggle-btn active" data-version="new" onclick="switchSyllabusVersion('new')">
+              New (2025-26 NCERT)
+            </button>
+            <button class="syllabus-toggle-btn" data-version="legacy" onclick="switchSyllabusVersion('legacy')">
+              Old (Pre-2025 NCERT)
+            </button>
+          </div>
+
           <div class="chapter-actions">
             <button class="btn btn-outline btn-sm" onclick="selectAllChapters()">Select All</button>
             <button class="btn btn-outline btn-sm" onclick="deselectAllChapters()">Deselect All</button>
