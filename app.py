@@ -3074,34 +3074,62 @@ def suggest_options():
         prompt = (
             f"You are an expert Indian school examiner for Class {class_num} {subject}.\n\n"
             f"Question: {question_txt}\n\n"
-            "Generate exactly 4 MCQ options (A, B, C, D) — only one correct — "
+            "Generate exactly 4 MCQ options (A, B, C, D) — only one must be correct — "
             "and identify the correct answer.\n\n"
-            "Respond with ONLY this JSON (no markdown, no extra text):\n"
+            "Respond with ONLY this JSON object (no markdown, no code fences, no extra text):\n"
             '{"options":["A) text","B) text","C) text","D) text"],'
             '"correct":"A","explanation":"One sentence why this answer is correct"}\n\n'
-            "Rules:\n"
-            f"- All 4 options must be plausible distractors appropriate for Class {class_num}\n"
-            "- Only ONE option must be correct; the others must be clearly wrong but tempting\n"
-            "- Keep each option concise (under 15 words)\n"
-            "- The correct field must be exactly one letter: A, B, C, or D"
+            "STRICT RULES:\n"
+            f"1. All 4 options must be plausible distractors for Class {class_num} {subject}.\n"
+            "2. Only ONE option is correct; others should be tempting but wrong.\n"
+            "3. Keep each option under 15 words.\n"
+            "4. The correct field must be exactly ONE letter: A, B, C, or D.\n"
+            "5. Do NOT use LaTeX backslash commands (no \\alpha, \\frac, \\sqrt, \\times etc.).\n"
+            "   Write math using Unicode directly: ×, ÷, ², ³, √, π, α, β, θ, ≤, ≥, ≠.\n"
+            "6. Do NOT include backslashes, unescaped quotes, or newlines inside any string.\n"
+            "7. Output valid JSON only — no comments, no trailing commas."
         )
         response = gemini_generate(
             _gemini,
             contents=[prompt],
             config=genai_types.GenerateContentConfig(
-                max_output_tokens=400,
-                temperature=0.4,
+                max_output_tokens=600,
+                temperature=0.35,
                 response_mime_type='application/json',
             ),
         )
-        raw = response.text.strip()
-        result = json.loads(raw)
+        raw = (response.text or '').strip()
+        if not raw:
+            return jsonify({'error': 'Empty response from AI model'}), 500
+
+        # Use the same robust JSON extractor used for paper generation —
+        # handles markdown fences, trailing commas, invalid escape sequences, etc.
+        result = extract_json(raw)
+
         # Normalise: ensure options list has exactly 4 entries
         opts   = result.get('options', [])
         labels = ['A', 'B', 'C', 'D']
         while len(opts) < 4:
             opts.append(f"{labels[len(opts)]}) —")
-        result['options'] = opts[:4]
+        # Convert any residual LaTeX commands to Unicode (same pipeline as paper gen)
+        cleaned_opts = []
+        for i, opt in enumerate(opts[:4]):
+            opt_text = _normalize_symbols(str(opt))
+            # Re-attach label prefix if it was stripped by normalisation
+            if not opt_text.upper().startswith(labels[i] + ')'):
+                inner = opt_text.lstrip('ABCDabcd) ').strip()
+                opt_text = f'{labels[i]}) {inner}'
+            cleaned_opts.append(opt_text)
+        result['options'] = cleaned_opts
+
+        # Ensure correct is a single uppercase letter
+        correct = str(result.get('correct', 'A')).strip().upper()
+        result['correct'] = correct[0] if correct and correct[0] in 'ABCD' else 'A'
+
+        # Normalise explanation text too
+        if result.get('explanation'):
+            result['explanation'] = _normalize_symbols(result['explanation'])
+
         return jsonify(result)
     except Exception as exc:
         app.logger.error(f'suggest_options error: {exc}')
