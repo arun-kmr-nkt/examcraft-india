@@ -2944,7 +2944,7 @@ def api_version():
         except Exception:
             pass
     return jsonify({
-        'version':       '2026-05-17-v2',
+        'version':       '2026-05-17-v3',
         'primary_model': _GEMINI_MODELS[0],
         'model_chain':   _GEMINI_MODELS,
         'has_env_key':   has_env_key,
@@ -3569,94 +3569,110 @@ def generate_paper():
         }
         diff_desc = difficulty_map.get(difficulty.lower(), 'Mixed')
 
-        teacher_line = f"- Teacher / Examiner: {teacher_name}" if teacher_name else ""
-        date_line    = f"- Exam Date: {exam_date}" if exam_date else ""
+        teacher_line   = f"- Teacher / Examiner: {teacher_name}" if teacher_name else ""
+        date_line      = f"- Exam Date: {exam_date}" if exam_date else ""
+        img_ref_line   = "Reference the uploaded chapter content/images for question creation." if pil_images else ""
+        sections_block = chr(10).join(sections_desc)
 
-        prompt_text = f"""You are an expert Indian school examiner creating an official question paper.
+        # Pre-build any literal brace-containing strings so they are NOT
+        # inside the f-string and can never be misread as format expressions.
+        _json_good  = '{"a": 1, "b": 2}'   # correct JSON — comma present
+        _json_bad   = '{"a": 1 "b": 2}'    # wrong JSON — comma missing
+        _sub_q_ex   = (
+            '[{"text": "What is the central theme?", "marks": 2}, '
+            '{"text": "Why did the author use this metaphor?", "marks": 3}]'
+        )
 
-EXAM SPECIFICATIONS:
-- Board: {board}
-- Class: {class_num}
-- Subject: {subject}
-- Chapters Covered: {chapters_str}
-- Exam Type: {exam_type} Examination
-- Total Marks: {total_marks}
-- Duration: {duration}
-- Difficulty Level: {diff_desc}
-{teacher_line}
-{date_line}
-
-QUESTION PAPER STRUCTURE:
-{chr(10).join(sections_desc)}
-
-INSTRUCTIONS FOR GENERATION:
-1. Create curriculum-appropriate questions strictly based on NCERT content
-2. Ensure questions test different cognitive levels (knowledge, understanding, application)
-3. For MCQs: provide 4 options (A, B, C, D) — only one correct
-4. For Match the Following: create two columns with 4-6 items each
-5. For Fill in the Blanks: leave clear blanks (_____)
-6. For Diagram questions: specify what to draw/label with clear instructions
-6a. For geometry_diagram questions: add a "figure_description" field to each question describing the geometric figure the student must construct (e.g., "A triangle ABC with AB=6cm, angle B=60°, BC=4cm. Measure and write the length of AC."). This description will be shown as a dashed placeholder box in the printed paper where students draw their construction.
-7. Include proper general instructions at the top
-8. Add complete answer key at the end
-9. Use ^{{text}} for superscripts (e.g., x^{{2}}) and _{{text}} for subscripts (e.g., H_{{2}}O). Do NOT use LaTeX backslash commands (no \\alpha, \\frac, \\sqrt, \\times etc.). Write fractions as a/b, roots as sqrt(x). Use these Unicode symbols DIRECTLY in the JSON text — copy-paste them exactly: Greek: α β γ δ ε ζ η θ ι κ λ μ ν ξ π ρ σ τ υ φ χ ψ ω  Γ Δ Θ Λ Ξ Π Σ Υ Φ Ψ Ω. Operators: × ÷ ± ≤ ≥ ≠ ≈ ≡ ∝ ∞ ∂ ∇ ∑ ∏ ∫ √ ∈ ∉ ∪ ∩ → ← ↔ ⇒ ∠ ⊥ ∥ °.
-10. CRITICAL — EXACT QUESTION COUNT: You MUST generate EXACTLY the number of questions specified for each section (see QUESTION PAPER STRUCTURE above). No more, no fewer. The total across all sections must be exactly {total_q_count} questions. Count each question carefully before finalising the JSON.
-11. For reading_passage and reading_poem sections: sub_questions MUST be a JSON array of objects — each object must have a "text" field (string) and a "marks" field (number). Do NOT use plain strings. The marks values across all sub_questions should sum to the section's marks-per-question. Example: "sub_questions": [{{"text": "What is the central theme of the passage?", "marks": 2}}, {{"text": "Why did the author use this metaphor? Explain.", "marks": 3}}]
-
-CRITICAL JSON RULES — violating any of these will break the output:
-- NEVER use double-quote characters (") inside any string value. Use single quotes (') or rephrase. Example: write  x equals 'y'  not  x equals "y".
-- NEVER put a literal newline or tab inside a string value — every string must be on ONE line.
-- NEVER use a backslash (\\) except for the valid JSON escapes \\", \\\\, \\n, \\t.
-- ALWAYS put a comma after every property value before the next property: {"a": 1, "b": 2} not {"a": 1 "b": 2}.
-- ALWAYS put a comma after every array/object element before the next: [1, 2, 3] not [1 2 3].
-- No trailing comma after the LAST element of an array or object.
-- Every opening {{ must have a matching closing }}, every [ must have a matching ].
-
-{"Reference the uploaded chapter content/images for question creation." if pil_images else ""}
-
-Return ONLY a valid JSON object (no markdown, no explanation, no text before or after the JSON) with this EXACT structure:
-{{
-  "paper_info": {{
-    "board": "{board}",
-    "class": "{class_num}",
-    "subject": "{subject}",
-    "exam_type": "{exam_type} Examination",
-    "total_marks": {total_marks},
-    "duration": "{duration}",
-    "teacher_name": "{teacher_name}",
-    "date": "{exam_date}",
-    "chapters": "{chapters_str}"
-  }},
-  "instructions": [
-    "All questions are compulsory.",
-    "Read all questions carefully before answering.",
-    "Write neatly and clearly."
-  ],
-  "sections": [
-    {{
-      "section_id": "A",
-      "section_name": "Section A – Multiple Choice Questions",
-      "type": "mcq",
-      "instructions": "Choose the correct option. Each question carries 1 mark.",
-      "questions": [
-        {{
-          "q_id": "Q1",
-          "text": "Question text here?",
-          "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
-          "marks": 1,
-          "difficulty": "easy",
-          "correct_answer": "A",
-          "explanation": "Brief explanation of why A is correct"
-        }}
-      ]
-    }}
-  ],
-  "answer_key": [
-    {{"q_id": "Q1", "section": "A", "answer": "A", "marks": 1}}
-  ]
-}}
-
-Generate ALL {total_q_count} questions exactly as specified above. Each section must contain EXACTLY the number of questions stated — do not add extra questions, do not omit any. Make every question appropriate for Class {class_num} {subject} {board} students."""
+        prompt_text = (
+            f"You are an expert Indian school examiner creating an official question paper.\n\n"
+            f"EXAM SPECIFICATIONS:\n"
+            f"- Board: {board}\n"
+            f"- Class: {class_num}\n"
+            f"- Subject: {subject}\n"
+            f"- Chapters Covered: {chapters_str}\n"
+            f"- Exam Type: {exam_type} Examination\n"
+            f"- Total Marks: {total_marks}\n"
+            f"- Duration: {duration}\n"
+            f"- Difficulty Level: {diff_desc}\n"
+            f"{teacher_line}\n"
+            f"{date_line}\n\n"
+            f"QUESTION PAPER STRUCTURE:\n"
+            f"{sections_block}\n\n"
+            "INSTRUCTIONS FOR GENERATION:\n"
+            "1. Create curriculum-appropriate questions strictly based on NCERT content\n"
+            "2. Ensure questions test different cognitive levels (knowledge, understanding, application)\n"
+            "3. For MCQs: provide 4 options (A, B, C, D) — only one correct\n"
+            "4. For Match the Following: create two columns with 4-6 items each\n"
+            "5. For Fill in the Blanks: leave clear blanks (_____)\n"
+            "6. For Diagram questions: specify what to draw/label with clear instructions\n"
+            "6a. For geometry_diagram questions: add a \"figure_description\" field describing "
+            "the geometric figure (e.g., 'A triangle ABC with AB=6cm, angle B=60 degrees, BC=4cm.'). "
+            "This shows as a placeholder box in the printed paper.\n"
+            "7. Include proper general instructions at the top\n"
+            "8. Add complete answer key at the end\n"
+            "9. Use ^{text} for superscripts (e.g. x^{2}) and _{text} for subscripts (e.g. H_{2}O). "
+            "Do NOT use LaTeX backslash commands (no \\\\alpha, \\\\frac, \\\\sqrt, \\\\times). "
+            "Write fractions as a/b, roots as sqrt(x). "
+            "Unicode math symbols — use directly: "
+            "Greek: α β γ δ ε ζ η θ ι κ λ μ ν ξ π ρ σ τ υ φ χ ψ ω Γ Δ Θ Λ Ξ Π Σ Υ Φ Ψ Ω. "
+            "Operators: × ÷ ± ≤ ≥ ≠ ≈ ≡ ∝ ∞ ∂ ∇ ∑ ∏ ∫ √ ∈ ∉ ∪ ∩ → ← ↔ ⇒ ∠ ⊥ ∥ °.\n"
+            f"10. CRITICAL — EXACT QUESTION COUNT: generate EXACTLY {total_q_count} questions total, "
+            "exactly as many as specified per section. Count carefully.\n"
+            f"11. For reading_passage/reading_poem: sub_questions must be a JSON array of objects "
+            f"each with 'text' (string) and 'marks' (number). Example: {_sub_q_ex}\n\n"
+            "CRITICAL JSON RULES — violating ANY of these will break the output:\n"
+            "- NEVER use double-quote characters (\") inside a string value. Use single quotes or rephrase.\n"
+            "- NEVER put a literal newline or tab inside a string — every string on ONE line.\n"
+            "- NEVER use a backslash except for valid JSON escapes: \\\", \\\\, \\n, \\t.\n"
+            f"- ALWAYS put a comma between properties: {_json_good}  NOT  {_json_bad}\n"
+            "- ALWAYS put a comma between array elements: [1, 2, 3]  NOT  [1 2 3]\n"
+            "- NO trailing comma after the last element of an array or object.\n"
+            "- Every { must have a matching }, every [ must have a matching ].\n"
+            f"{img_ref_line}\n\n"
+            "Return ONLY a valid JSON object (no markdown, no explanation) with this structure:\n"
+            "{{\n"
+            "  \"paper_info\": {{\n"
+            f"    \"board\": \"{board}\",\n"
+            f"    \"class\": \"{class_num}\",\n"
+            f"    \"subject\": \"{subject}\",\n"
+            f"    \"exam_type\": \"{exam_type} Examination\",\n"
+            f"    \"total_marks\": {total_marks},\n"
+            f"    \"duration\": \"{duration}\",\n"
+            f"    \"teacher_name\": \"{teacher_name}\",\n"
+            f"    \"date\": \"{exam_date}\",\n"
+            f"    \"chapters\": \"{chapters_str}\"\n"
+            "  }},\n"
+            "  \"instructions\": [\n"
+            "    \"All questions are compulsory.\",\n"
+            "    \"Read all questions carefully before answering.\",\n"
+            "    \"Write neatly and clearly.\"\n"
+            "  ],\n"
+            "  \"sections\": [\n"
+            "    {{\n"
+            "      \"section_id\": \"A\",\n"
+            "      \"section_name\": \"Section A\",\n"
+            "      \"type\": \"mcq\",\n"
+            "      \"instructions\": \"Choose the correct option.\",\n"
+            "      \"questions\": [\n"
+            "        {{\n"
+            "          \"q_id\": \"Q1\",\n"
+            "          \"text\": \"Question text here?\",\n"
+            "          \"options\": [\"A) Option 1\", \"B) Option 2\", \"C) Option 3\", \"D) Option 4\"],\n"
+            "          \"marks\": 1,\n"
+            "          \"difficulty\": \"easy\",\n"
+            "          \"correct_answer\": \"A\",\n"
+            "          \"explanation\": \"Why A is correct\"\n"
+            "        }}\n"
+            "      ]\n"
+            "    }}\n"
+            "  ],\n"
+            "  \"answer_key\": [\n"
+            "    {{\"q_id\": \"Q1\", \"section\": \"A\", \"answer\": \"A\", \"marks\": 1}}\n"
+            "  ]\n"
+            "}}\n\n"
+            f"Generate ALL {total_q_count} questions exactly as specified. "
+            f"Make every question appropriate for Class {class_num} {subject} {board} students."
+        )
 
         # Build Gemini content: images first, then the prompt text
         contents = pil_images + [prompt_text]
