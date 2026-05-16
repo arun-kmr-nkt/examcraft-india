@@ -2722,6 +2722,28 @@ def get_subjects():
     return jsonify({'subjects': result})
 
 
+@app.route('/api/version')
+def api_version():
+    """Deployment verification endpoint — shows what code is actually running."""
+    uid = current_user.id if current_user.is_authenticated else None
+    has_env_key  = bool(os.environ.get('GOOGLE_API_KEY', '').strip())
+    has_user_key = False
+    if uid:
+        try:
+            p = UserProfile.query.filter_by(user_id=uid).first()
+            has_user_key = bool(p and p.google_api_key)
+        except Exception:
+            pass
+    return jsonify({
+        'version':       '2026-05-16-v5',
+        'primary_model': _GEMINI_MODELS[0],
+        'model_chain':   _GEMINI_MODELS,
+        'has_env_key':   has_env_key,
+        'has_user_key':  has_user_key,
+        'api_key_source': 'user_profile' if has_user_key else ('env_var' if has_env_key else 'none'),
+    })
+
+
 @app.route('/api/chapters', methods=['POST'])
 def get_chapters():
     data            = request.get_json(force=True, silent=True) or {}
