@@ -2,8 +2,8 @@ name: Keep Render Alive
 
 on:
   schedule:
-    # Runs every 10 minutes — prevents Render free-tier spin-down
-    - cron: '*/10 * * * *'
+    # Runs every 15 minutes — prevents Render free-tier spin-down
+    - cron: '*/15 * * * *'
   workflow_dispatch:   # Allow manual trigger from GitHub Actions tab
 
 jobs:
