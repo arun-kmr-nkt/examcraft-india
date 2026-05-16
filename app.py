@@ -493,10 +493,10 @@ def get_gemini_client(user_id=None):
 # no thinking-token overhead, and produces excellent paper quality.
 # gemini-2.5-flash is a thinking model — it silently burns through TPM quota
 # with hidden reasoning tokens, causing 429s even on fresh API keys.
+# Note: gemini-1.5-flash removed — deprecated in the v1beta API (returns 404).
 _GEMINI_MODELS = [
     'models/gemini-2.0-flash',
     'models/gemini-2.0-flash-lite',
-    'models/gemini-1.5-flash',
     'models/gemini-2.5-flash',
 ]
 
@@ -504,13 +504,14 @@ _GEMINI_MODELS = [
 def gemini_generate(client, contents, config, max_retries=3):
     """
     Call generate_content with retry logic:
-    - 429 / RESOURCE_EXHAUSTED (quota): immediately skip to the next model — retrying
-      the same model won't help and just wastes time.  Tries all 4 models before giving up.
+    - 429 / RESOURCE_EXHAUSTED (quota): immediately skip to next model.
+    - 404 / NOT_FOUND (model deprecated/unavailable): skip to next model.
     - 503 / 500 / UNAVAILABLE / INTERNAL (transient): exponential backoff then next model.
-    - Anything else: re-raise immediately (not retryable).
+    - Anything else (e.g. 400 bad request, 401 auth): re-raise immediately.
     """
-    _QUOTA     = ('429', 'RESOURCE_EXHAUSTED')
-    _TRANSIENT = ('503', '500', 'UNAVAILABLE', 'INTERNAL')
+    _QUOTA      = ('429', 'RESOURCE_EXHAUSTED')
+    _TRANSIENT  = ('503', '500', 'UNAVAILABLE', 'INTERNAL')
+    _SKIP_MODEL = ('404', 'NOT_FOUND')   # model gone — try next silently
 
     last_err = None
     for model in _GEMINI_MODELS:
@@ -525,17 +526,20 @@ def gemini_generate(client, contents, config, max_retries=3):
                 last_err = e
                 err_str  = str(e)
 
-                is_quota     = any(code in err_str for code in _QUOTA)
-                is_transient = any(code in err_str for code in _TRANSIENT)
+                is_quota      = any(code in err_str for code in _QUOTA)
+                is_transient  = any(code in err_str for code in _TRANSIENT)
+                is_skip_model = any(code in err_str for code in _SKIP_MODEL)
 
-                if not is_quota and not is_transient:
-                    raise   # non-retryable (bad request, auth error, etc.)
-
-                if is_quota:
+                if is_quota or is_skip_model:
+                    # Quota exhausted or model not available — try next immediately
+                    reason = 'quota exhausted' if is_quota else 'model not available (404)'
                     is_last = (model == _GEMINI_MODELS[-1])
-                    print(f'[GEMINI] {model} quota exhausted — '
+                    print(f'[GEMINI] {model} {reason} — '
                           f'{"trying next model" if not is_last else "all models exhausted"}')
                     break   # exit retry loop, outer loop tries next model
+
+                if not is_transient:
+                    raise   # non-retryable (400 bad request, 401 auth error, etc.)
 
                 # Transient error — retry with exponential backoff
                 if attempt < max_retries:
@@ -2827,7 +2831,7 @@ def api_version():
         except Exception:
             pass
     return jsonify({
-        'version':       '2026-05-16-v5',
+        'version':       '2026-05-17-v1',
         'primary_model': _GEMINI_MODELS[0],
         'model_chain':   _GEMINI_MODELS,
         'has_env_key':   has_env_key,
